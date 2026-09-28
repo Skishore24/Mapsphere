@@ -8,6 +8,11 @@ export function useWebSocket(shareId?: string | null, onLocationReceived?: (msg:
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
+    if (!shareId) {
+      setIsConnected(false);
+      return;
+    }
+
     const client = new Client({
       webSocketFactory: () => new SockJS('http://localhost:8081/ws-mapsphere'),
       reconnectDelay: 5000,
@@ -15,7 +20,7 @@ export function useWebSocket(shareId?: string | null, onLocationReceived?: (msg:
       heartbeatOutgoing: 4000,
       onConnect: () => {
         setIsConnected(true);
-        if (shareId && onLocationReceived) {
+        if (onLocationReceived) {
           client.subscribe(`/topic/location/${shareId}`, message => {
             try {
               const parsed: LocationMessage = JSON.parse(message.body);
@@ -32,6 +37,9 @@ export function useWebSocket(shareId?: string | null, onLocationReceived?: (msg:
       onStompError: frame => {
         console.error('STOMP Broker error: ' + frame.headers['message']);
       },
+      onWebSocketError: event => {
+        console.warn('STOMP WebSocket warning:', event);
+      },
     });
 
     client.activate();
@@ -39,6 +47,7 @@ export function useWebSocket(shareId?: string | null, onLocationReceived?: (msg:
 
     return () => {
       client.deactivate();
+      clientRef.current = null;
     };
   }, [shareId, onLocationReceived]);
 
