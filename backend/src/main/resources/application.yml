@@ -4,9 +4,17 @@ server:
 spring:
   application:
     name: mapsphere
-  # Exclude DataSource/Hibernate autoconfiguration in Phase 2
-  # until PostgreSQL & PostGIS are configured in Phase 3
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mapsphere
+    username: postgres
+    password: Admin@123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true

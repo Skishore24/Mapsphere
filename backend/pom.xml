@@ -63,6 +63,12 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- 8. Hibernate Spatial: Maps PostGIS geometries (Point, Polygon, LineString) -->
+		<dependency>
+			<groupId>org.hibernate.orm</groupId>
+			<artifactId>hibernate-spatial</artifactId>
+		</dependency>
+
 		<!-- Test dependencies -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
