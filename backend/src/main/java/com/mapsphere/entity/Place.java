@@ -7,7 +7,10 @@ import org.locationtech.jts.geom.Point;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "places")
+@Table(name = "places", indexes = {
+    @Index(name = "idx_places_category", columnList = "category"),
+    @Index(name = "idx_places_name", columnList = "name")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,7 +28,7 @@ public class Place {
     @Column(length = 500)
     private String description;
 
-    @Column(length = 50)
+    @Column(nullable = false, length = 50)
     private String category;
 
     @Column(length = 255)
@@ -34,13 +37,28 @@ public class Place {
     @Column(columnDefinition = "geometry(Point, 4326)", nullable = false)
     private Point location;
 
+    @Column(length = 30)
+    private String phone;
+
+    @Column(length = 255)
+    private String website;
+
     private Double rating;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 }
