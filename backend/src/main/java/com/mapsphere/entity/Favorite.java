@@ -28,14 +28,13 @@ public class Favorite {
     @JoinColumn(name = "place_id", nullable = false)
     private Place place;
 
-    @Column(name = "custom_name", length = 100)
+    @Column(name = "custom_name", length = 150)
     private String customName;
 
-    @Column(length = 30)
-    @Builder.Default
-    private String category = "Favorite"; // Home, Work, Favorite, Custom
+    @Column(length = 50)
+    private String tag; // HOME, WORK, FAVORITE, CUSTOM
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @PrePersist

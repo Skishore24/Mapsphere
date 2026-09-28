@@ -1,18 +1,16 @@
 package com.mapsphere.controller;
 
-import com.mapsphere.dto.location.LiveLocationUpdate;
-import com.mapsphere.dto.location.ShareLocationRequest;
-import com.mapsphere.dto.location.ShareLocationResponse;
+import com.mapsphere.entity.LocationShareSession;
 import com.mapsphere.entity.User;
-import com.mapsphere.exception.ResourceNotFoundException;
 import com.mapsphere.repository.UserRepository;
 import com.mapsphere.service.LocationService;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/location")
@@ -20,50 +18,43 @@ public class LocationController {
 
     private final LocationService locationService;
     private final UserRepository userRepository;
-    private final SimpMessagingTemplate messagingTemplate;
 
-    public LocationController(
-            LocationService locationService,
-            UserRepository userRepository,
-            SimpMessagingTemplate messagingTemplate
-    ) {
+    public LocationController(LocationService locationService, UserRepository userRepository) {
         this.locationService = locationService;
         this.userRepository = userRepository;
-        this.messagingTemplate = messagingTemplate;
     }
 
     @PostMapping("/share")
-    public ResponseEntity<ShareLocationResponse> createShareSession(
-            @RequestBody(required = false) ShareLocationRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        int duration = (request != null && request.getDurationMinutes() > 0) ? request.getDurationMinutes() : 60;
-        return ResponseEntity.ok(locationService.createShareSession(user, duration));
+    public ResponseEntity<Map<String, Object>> startLocationShare(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+        return ResponseEntity.ok(locationService.createShareSession(user));
     }
 
-    @GetMapping("/share/{shareId}")
-    public ResponseEntity<ShareLocationResponse> getShareSession(@PathVariable String shareId) {
-        return ResponseEntity.ok(locationService.getSession(shareId));
+    @GetMapping("/track/{shareId}")
+    public ResponseEntity<Map<String, Object>> getLiveTrackingSession(@PathVariable String shareId) {
+        LocationShareSession session = locationService.getSession(shareId);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("shareId", session.getShareId());
+        response.put("sharerName", session.getUser().getName());
+        response.put("latitude", session.getLastLat());
+        response.put("longitude", session.getLastLng());
+        response.put("accuracy", session.getLastAccuracy());
+        response.put("heading", session.getLastHeading());
+        response.put("speed", session.getLastSpeed());
+        response.put("lastUpdate", session.getLastUpdate());
+        response.put("expiresAt", session.getExpiresAt());
+        response.put("active", session.isActive());
+
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/share/{shareId}")
-    public ResponseEntity<Void> stopShareSession(
+    public ResponseEntity<Void> stopLocationShare(
             @PathVariable String shareId,
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        locationService.stopSession(shareId, user);
+        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+        locationService.stopShareSession(shareId, user);
         return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/update")
-    public ResponseEntity<LiveLocationUpdate> updateLocationHttp(
-            @Valid @RequestBody LiveLocationUpdate update) {
-        LiveLocationUpdate saved = locationService.updateLocation(update);
-        messagingTemplate.convertAndSend("/topic/location/" + update.getShareId(), saved);
-        return ResponseEntity.ok(saved);
     }
 }

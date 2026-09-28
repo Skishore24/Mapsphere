@@ -58,7 +58,7 @@ public class PlaceTestController {
             @RequestParam(defaultValue = "77.000") double lng,
             @RequestParam(defaultValue = "5000") double radius) {
 
-        List<Place> nearby = placeRepository.findNearbyPlaces(lat, lng, radius, 50);
+        List<Place> nearby = placeRepository.findNearbyPlaces(lat, lng, radius);
 
         List<Map<String, Object>> response = nearby.stream().map(p -> {
             Map<String, Object> map = new HashMap<>();

@@ -12,7 +12,7 @@ import java.util.List;
 public interface PlaceRepository extends JpaRepository<Place, Long> {
 
     /**
-     * Radial nearby search using PostGIS ST_DWithin on spherical geography.
+     * Finds places within a radius (in meters) of (lat, lng) using PostGIS ST_DWithin.
      */
     @Query(value = """
         SELECT * FROM places p
@@ -25,43 +25,32 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             p.location,
             ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
         ) ASC
-        LIMIT :limit
+        LIMIT 100
         """, nativeQuery = true)
     List<Place> findNearbyPlaces(
         @Param("lat") double lat,
         @Param("lng") double lng,
-        @Param("radiusMeters") double radiusMeters,
-        @Param("limit") int limit
+        @Param("radiusMeters") double radiusMeters
     );
 
     /**
-     * Viewport Bounding-Box query: returns places strictly within map viewport.
-     * Uses ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326) and spatial && operator.
+     * Viewport Bounding Box query: Returns places strictly visible within current map screen.
+     * ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326)
      */
     @Query(value = """
         SELECT * FROM places p
         WHERE p.location && ST_MakeEnvelope(:minLng, :minLat, :maxLng, :maxLat, 4326)
-        LIMIT :limit
+        LIMIT 200
         """, nativeQuery = true)
     List<Place> findInBoundingBox(
         @Param("minLat") double minLat,
         @Param("minLng") double minLng,
         @Param("maxLat") double maxLat,
-        @Param("maxLng") double maxLng,
-        @Param("limit") int limit
+        @Param("maxLng") double maxLng
     );
 
-    /**
-     * Deterministic place name, category, or address keyword search.
-     */
-    @Query(value = """
-        SELECT * FROM places p
-        WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%'))
-           OR LOWER(p.category) LIKE LOWER(CONCAT('%', :query, '%'))
-           OR LOWER(p.address) LIKE LOWER(CONCAT('%', :query, '%'))
-        LIMIT 20
-        """, nativeQuery = true)
-    List<Place> searchByQuery(@Param("query") String query);
-
     List<Place> findByCategoryIgnoreCase(String category);
+
+    @Query("SELECT p FROM Place p WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(p.address) LIKE LOWER(CONCAT('%', :query, '%'))")
+    List<Place> searchByKeyword(@Param("query") String query);
 }

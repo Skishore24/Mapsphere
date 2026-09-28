@@ -1,12 +1,8 @@
 package com.mapsphere.controller;
 
-import com.mapsphere.dto.favorite.FavoriteRequest;
-import com.mapsphere.dto.favorite.FavoriteResponse;
 import com.mapsphere.entity.User;
-import com.mapsphere.exception.ResourceNotFoundException;
 import com.mapsphere.repository.UserRepository;
 import com.mapsphere.service.FavoriteService;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,6 +10,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/favorites")
@@ -28,30 +25,32 @@ public class FavoriteController {
     }
 
     @GetMapping
-    public ResponseEntity<List<FavoriteResponse>> getFavorites(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        return ResponseEntity.ok(favoriteService.getFavorites(user));
+    public ResponseEntity<List<Map<String, Object>>> getFavorites(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+        return ResponseEntity.ok(favoriteService.getUserFavorites(user));
     }
 
     @PostMapping
-    public ResponseEntity<FavoriteResponse> addFavorite(
-            @Valid @RequestBody FavoriteRequest request,
+    public ResponseEntity<Map<String, Object>> addFavorite(
+            @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        return ResponseEntity.status(HttpStatus.CREATED).body(favoriteService.addFavorite(user, request));
+
+        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+        Long placeId = ((Number) body.get("placeId")).longValue();
+        String customName = (String) body.get("customName");
+        String tag = (String) body.get("tag");
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(favoriteService.addFavorite(user, placeId, customName, tag));
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{placeId}")
     public ResponseEntity<Void> removeFavorite(
-            @PathVariable Long id,
+            @PathVariable Long placeId,
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        favoriteService.removeFavorite(user, id);
-        return ResponseEntity.noContent().build();
-    }
 
-    private User getUser(UserDetails userDetails) {
-        return userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+        favoriteService.removeFavorite(user, placeId);
+        return ResponseEntity.noContent().build();
     }
 }

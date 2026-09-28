@@ -10,7 +10,6 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class RouteRequest {
-
     @Valid
     @NotNull(message = "Origin coordinates are required")
     private Coordinates origin;
@@ -19,6 +18,9 @@ public class RouteRequest {
     @NotNull(message = "Destination coordinates are required")
     private Coordinates destination;
 
+    private String originName;
+    private String destinationName;
+
     @Builder.Default
-    private String mode = "DRIVING";
+    private String mode = "DRIVING"; // DRIVING, WALKING, CYCLING
 }

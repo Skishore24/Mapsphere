@@ -9,10 +9,10 @@ import lombok.*;
 @Builder
 public class SearchResult {
     private String name;
-    private String address;
-    private Double latitude;
-    private Double longitude;
+    private String displayName;
+    private double latitude;
+    private double longitude;
     private String category;
-    private String source;
+    private String type; // "DATABASE_PLACE" or "GEOCODED_ADDRESS"
     private Long placeId;
 }

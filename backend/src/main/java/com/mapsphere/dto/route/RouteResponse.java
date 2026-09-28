@@ -10,11 +10,11 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class RouteResponse {
-    private Double distanceMeters;
-    private Integer durationSeconds;
-    private String formattedDistance;
-    private String formattedDuration;
+    private double distanceMeters;
+    private double durationSeconds;
     private String travelMode;
+    // List of [latitude, longitude] pairs for polyline drawing
     private List<List<Double>> geometry;
     private List<RouteStep> steps;
+    private String summary;
 }

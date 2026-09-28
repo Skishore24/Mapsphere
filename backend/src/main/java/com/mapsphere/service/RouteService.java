@@ -3,8 +3,8 @@ package com.mapsphere.service;
 import com.mapsphere.dto.route.RouteRequest;
 import com.mapsphere.dto.route.RouteResponse;
 import com.mapsphere.entity.RouteHistory;
+import com.mapsphere.entity.User;
 import com.mapsphere.repository.RouteHistoryRepository;
-import com.mapsphere.repository.UserRepository;
 import com.mapsphere.service.routing.RoutingProvider;
 import org.springframework.stereotype.Service;
 
@@ -13,39 +13,28 @@ public class RouteService {
 
     private final RoutingProvider routingProvider;
     private final RouteHistoryRepository routeHistoryRepository;
-    private final UserRepository userRepository;
 
-    public RouteService(
-            RoutingProvider routingProvider,
-            RouteHistoryRepository routeHistoryRepository,
-            UserRepository userRepository
-    ) {
+    public RouteService(RoutingProvider routingProvider, RouteHistoryRepository routeHistoryRepository) {
         this.routingProvider = routingProvider;
         this.routeHistoryRepository = routeHistoryRepository;
-        this.userRepository = userRepository;
     }
 
-    public RouteResponse calculateRoute(RouteRequest request, String userEmail) {
-        RouteResponse response = routingProvider.calculateRoute(
-                request.getOrigin(),
-                request.getDestination(),
-                request.getMode()
-        );
+    public RouteResponse calculateRoute(RouteRequest request, User user) {
+        RouteResponse response = routingProvider.calculateRoute(request);
 
-        if (userEmail != null && !userEmail.isBlank()) {
-            userRepository.findByEmail(userEmail).ifPresent(user -> {
-                String startDesc = String.format("%.4f, %.4f", request.getOrigin().getLatitude(), request.getOrigin().getLongitude());
-                String destDesc = String.format("%.4f, %.4f", request.getDestination().getLatitude(), request.getDestination().getLongitude());
-
-                routeHistoryRepository.save(RouteHistory.builder()
-                        .user(user)
-                        .startLocation(startDesc)
-                        .destinationLocation(destDesc)
-                        .distance(response.getDistanceMeters())
-                        .duration(response.getDurationSeconds())
-                        .travelMode(request.getMode().toUpperCase())
-                        .build());
-            });
+        if (user != null) {
+            routeHistoryRepository.save(RouteHistory.builder()
+                    .user(user)
+                    .originName(request.getOriginName() != null ? request.getOriginName() : "Origin")
+                    .destinationName(request.getDestinationName() != null ? request.getDestinationName() : "Destination")
+                    .originLat(request.getOrigin().getLatitude())
+                    .originLng(request.getOrigin().getLongitude())
+                    .destinationLat(request.getDestination().getLatitude())
+                    .destinationLng(request.getDestination().getLongitude())
+                    .distanceMeters(response.getDistanceMeters())
+                    .durationSeconds(response.getDurationSeconds())
+                    .travelMode(response.getTravelMode())
+                    .build());
         }
 
         return response;

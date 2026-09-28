@@ -1,11 +1,12 @@
 package com.mapsphere.websocket;
 
-import com.mapsphere.dto.location.LiveLocationUpdate;
 import com.mapsphere.service.LocationService;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+
+import java.time.LocalDateTime;
 
 @Controller
 public class LocationWebSocketController {
@@ -18,13 +19,27 @@ public class LocationWebSocketController {
         this.locationService = locationService;
     }
 
-    /**
-     * Mobile or browser client publishes location packet to /app/location.update
-     * Server saves the position and broadcasts to all subscribers watching /topic/location/{shareId}
-     */
     @MessageMapping("/location.update")
-    public void updateLocation(@Payload LiveLocationUpdate update) {
-        LiveLocationUpdate processed = locationService.updateLocation(update);
-        messagingTemplate.convertAndSend("/topic/location/" + update.getShareId(), processed);
+    public void handleLocationUpdate(@Payload LocationMessage message) {
+        if (message.getShareId() == null || message.getShareId().isBlank()) {
+            return;
+        }
+
+        if (message.getTimestamp() == null) {
+            message.setTimestamp(LocalDateTime.now().toString());
+        }
+
+        // Persist the latest coordinate
+        locationService.recordLocationUpdate(
+                message.getShareId(),
+                message.getLatitude(),
+                message.getLongitude(),
+                message.getAccuracy(),
+                message.getHeading(),
+                message.getSpeed()
+        );
+
+        // Broadcast to all viewers subscribed to this specific session topic
+        messagingTemplate.convertAndSend("/topic/location/" + message.getShareId(), message);
     }
 }

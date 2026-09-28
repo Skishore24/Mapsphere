@@ -6,7 +6,6 @@ import com.mapsphere.entity.SearchHistory;
 import com.mapsphere.entity.User;
 import com.mapsphere.repository.PlaceRepository;
 import com.mapsphere.repository.SearchHistoryRepository;
-import com.mapsphere.repository.UserRepository;
 import com.mapsphere.service.geocoding.GeocodingProvider;
 import org.springframework.stereotype.Service;
 
@@ -19,59 +18,56 @@ public class SearchService {
     private final PlaceRepository placeRepository;
     private final GeocodingProvider geocodingProvider;
     private final SearchHistoryRepository searchHistoryRepository;
-    private final UserRepository userRepository;
 
-    public SearchService(
-            PlaceRepository placeRepository,
-            GeocodingProvider geocodingProvider,
-            SearchHistoryRepository searchHistoryRepository,
-            UserRepository userRepository
-    ) {
+    public SearchService(PlaceRepository placeRepository,
+                         GeocodingProvider geocodingProvider,
+                         SearchHistoryRepository searchHistoryRepository) {
         this.placeRepository = placeRepository;
         this.geocodingProvider = geocodingProvider;
         this.searchHistoryRepository = searchHistoryRepository;
-        this.userRepository = userRepository;
     }
 
-    public List<SearchResult> search(String query, String userEmail) {
+    public List<SearchResult> search(String query, Double lat, Double lng, User user) {
+        List<SearchResult> combined = new ArrayList<>();
+
         if (query == null || query.trim().length() < 2) {
-            return List.of();
+            return combined;
         }
 
-        String trimmed = query.trim();
-        List<SearchResult> results = new ArrayList<>();
+        String cleanQuery = query.trim();
 
-        // 1. Search local PostGIS places database
-        List<Place> localPlaces = placeRepository.searchByQuery(trimmed);
+        // 1. Search internal database places (instant)
+        List<Place> localPlaces = placeRepository.searchByKeyword(cleanQuery);
         for (Place p : localPlaces) {
-            results.add(SearchResult.builder()
-                    .placeId(p.getId())
+            combined.add(SearchResult.builder()
                     .name(p.getName())
-                    .address(p.getAddress())
+                    .displayName(p.getName() + " - " + p.getAddress())
                     .latitude(p.getLocation().getY())
                     .longitude(p.getLocation().getX())
                     .category(p.getCategory())
-                    .source("LOCAL")
+                    .type("DATABASE_PLACE")
+                    .placeId(p.getId())
                     .build());
         }
 
-        // 2. Query Geocoding Provider (Nominatim / OpenStreetMap)
-        List<SearchResult> geoResults = geocodingProvider.geocode(trimmed);
-        results.addAll(geoResults);
+        // 2. Search external geocoding provider (Addresses, Cities, Towns)
+        List<SearchResult> geocoded = geocodingProvider.search(cleanQuery);
+        combined.addAll(geocoded);
 
-        // 3. Record in SearchHistory if user is logged in
-        if (userEmail != null && !userEmail.isBlank() && !results.isEmpty()) {
-            userRepository.findByEmail(userEmail).ifPresent(user -> {
-                SearchResult first = results.get(0);
-                searchHistoryRepository.save(SearchHistory.builder()
-                        .user(user)
-                        .query(trimmed)
-                        .latitude(first.getLatitude())
-                        .longitude(first.getLongitude())
-                        .build());
-            });
+        // 3. Save to search history if authenticated
+        if (user != null) {
+            searchHistoryRepository.save(SearchHistory.builder()
+                    .user(user)
+                    .query(cleanQuery)
+                    .latitude(lat)
+                    .longitude(lng)
+                    .build());
         }
 
-        return results;
+        return combined;
+    }
+
+    public SearchResult reverseGeocode(double lat, double lng) {
+        return geocodingProvider.reverseGeocode(lat, lng);
     }
 }

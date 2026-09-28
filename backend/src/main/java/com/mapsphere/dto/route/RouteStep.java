@@ -9,7 +9,7 @@ import lombok.*;
 @Builder
 public class RouteStep {
     private String instruction;
-    private Double distanceMeters;
-    private Integer durationSeconds;
-    private String name;
+    private double distanceMeters;
+    private double durationSeconds;
+    private String modifier;
 }

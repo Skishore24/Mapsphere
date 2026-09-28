@@ -1,197 +1,161 @@
 package com.mapsphere.service.routing;
 
-import com.mapsphere.dto.route.Coordinates;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mapsphere.dto.route.RouteRequest;
 import com.mapsphere.dto.route.RouteResponse;
 import com.mapsphere.dto.route.RouteStep;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class OsrmRoutingProvider implements RoutingProvider {
 
-    private final RestTemplate restTemplate;
+    private static final Logger log = LoggerFactory.getLogger(OsrmRoutingProvider.class);
 
-    public OsrmRoutingProvider(RestTemplateBuilder builder) {
-        this.restTemplate = builder
-                .setConnectTimeout(Duration.ofSeconds(4))
-                .setReadTimeout(Duration.ofSeconds(4))
-                .build();
-    }
+    @Value("${mapsphere.routing.osrm-url:https://router.project-osrm.org}")
+    private String osrmBaseUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    @SuppressWarnings("unchecked")
-    public RouteResponse calculateRoute(Coordinates origin, Coordinates destination, String mode) {
-        String profile = "driving";
-        if ("WALKING".equalsIgnoreCase(mode)) {
-            profile = "foot";
-        } else if ("CYCLING".equalsIgnoreCase(mode)) {
-            profile = "bike";
-        }
+    public RouteResponse calculateRoute(RouteRequest request) {
+        String profile = switch (request.getMode().toUpperCase()) {
+            case "WALKING" -> "foot";
+            case "CYCLING" -> "bike";
+            default -> "driving";
+        };
 
-        String url = String.format(
-                "https://router.project-osrm.org/route/v1/%s/%f,%f;%f,%f?overview=full&geometries=geojson&steps=true",
-                profile,
-                origin.getLongitude(), origin.getLatitude(),
-                destination.getLongitude(), destination.getLatitude()
-        );
+        double originLng = request.getOrigin().getLongitude();
+        double originLat = request.getOrigin().getLatitude();
+        double destLng = request.getDestination().getLongitude();
+        double destLat = request.getDestination().getLatitude();
+
+        String url = String.format("%s/route/v1/%s/%f,%f;%f,%f?overview=full&geometries=geojson&steps=true",
+                osrmBaseUrl, profile, originLng, originLat, destLng, destLat);
 
         try {
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            if (response != null && "Ok".equalsIgnoreCase((String) response.get("code"))) {
-                List<Map<String, Object>> routes = (List<Map<String, Object>>) response.get("routes");
-                if (routes != null && !routes.isEmpty()) {
-                    Map<String, Object> route = routes.get(0);
-                    Number distanceNum = (Number) route.get("distance");
-                    Number durationNum = (Number) route.get("duration");
+            String json = restTemplate.getForObject(url, String.class);
+            if (json != null) {
+                JsonNode root = objectMapper.readTree(json);
+                if ("Ok".equalsIgnoreCase(root.path("code").asText())) {
+                    JsonNode routeNode = root.path("routes").get(0);
+                    double distance = routeNode.path("distance").asDouble();
+                    double duration = routeNode.path("duration").asDouble();
 
-                    double distanceMeters = distanceNum.doubleValue();
-                    int durationSeconds = durationNum.intValue();
-
-                    // Extract coordinates from GeoJSON LineString geometry
-                    Map<String, Object> geometryMap = (Map<String, Object>) route.get("geometry");
-                    List<List<Number>> coords = (List<List<Number>>) geometryMap.get("coordinates");
-
-                    List<List<Double>> latLngList = new ArrayList<>();
-                    for (List<Number> c : coords) {
-                        // GeoJSON is [lng, lat] -> convert to [lat, lng] for Leaflet
-                        latLngList.add(List.of(c.get(1).doubleValue(), c.get(0).doubleValue()));
+                    // Parse geometry: GeoJSON coordinates are [longitude, latitude] -> convert to [lat, lng] for Leaflet
+                    List<List<Double>> geometry = new ArrayList<>();
+                    JsonNode coords = routeNode.path("geometry").path("coordinates");
+                    for (JsonNode point : coords) {
+                        double lng = point.get(0).asDouble();
+                        double lat = point.get(1).asDouble();
+                        geometry.add(List.of(lat, lng));
                     }
 
-                    // Extract navigation steps
+                    // Parse turn-by-turn steps
                     List<RouteStep> steps = new ArrayList<>();
-                    List<Map<String, Object>> legs = (List<Map<String, Object>>) route.get("legs");
-                    if (legs != null && !legs.isEmpty()) {
-                        List<Map<String, Object>> rawSteps = (List<Map<String, Object>>) legs.get(0).get("steps");
-                        for (Map<String, Object> s : rawSteps) {
-                            Map<String, Object> maneuver = (Map<String, Object>) s.get("maneuver");
-                            String type = maneuver != null ? (String) maneuver.get("type") : "continue";
-                            String modifier = maneuver != null ? (String) maneuver.get("modifier") : "";
-                            String streetName = (String) s.get("name");
+                    JsonNode legs = routeNode.path("legs");
+                    if (legs.isArray() && !legs.isEmpty()) {
+                        JsonNode stepNodes = legs.get(0).path("steps");
+                        for (JsonNode s : stepNodes) {
+                            String name = s.path("name").asText();
+                            String maneuverType = s.path("maneuver").path("type").asText("turn");
+                            String modifier = s.path("maneuver").path("modifier").asText("");
+                            double stepDist = s.path("distance").asDouble();
+                            double stepDur = s.path("duration").asDouble();
 
-                            String instruction = buildInstruction(type, modifier, streetName);
-                            Number stepDist = (Number) s.get("distance");
-                            Number stepDur = (Number) s.get("duration");
-
+                            String instruction = buildInstruction(maneuverType, modifier, name);
                             steps.add(RouteStep.builder()
                                     .instruction(instruction)
-                                    .name(streetName != null && !streetName.isBlank() ? streetName : "Unnamed Road")
-                                    .distanceMeters(stepDist != null ? stepDist.doubleValue() : 0.0)
-                                    .durationSeconds(stepDur != null ? stepDur.intValue() : 0)
+                                    .distanceMeters(stepDist)
+                                    .durationSeconds(stepDur)
+                                    .modifier(modifier)
                                     .build());
                         }
                     }
 
                     return RouteResponse.builder()
-                            .distanceMeters(distanceMeters)
-                            .durationSeconds(durationSeconds)
-                            .formattedDistance(formatDistance(distanceMeters))
-                            .formattedDuration(formatDuration(durationSeconds))
-                            .travelMode(mode.toUpperCase())
-                            .geometry(latLngList)
+                            .distanceMeters(distance)
+                            .durationSeconds(duration)
+                            .travelMode(request.getMode().toUpperCase())
+                            .geometry(geometry)
                             .steps(steps)
+                            .summary(formatSummary(distance, duration, request.getMode()))
                             .build();
                 }
             }
         } catch (Exception e) {
-            // Fallback to geometric direct route if OSRM is unreachable
+            log.warn("OSRM routing failed: {}. Falling back to spherical direct line calculation.", e.getMessage());
         }
 
-        return fallbackGeometricRoute(origin, destination, mode);
+        // Resilient Fallback: Compute Great-Circle straight line route if external routing server fails
+        return createFallbackRoute(request, originLat, originLng, destLat, destLng);
     }
 
-    private String buildInstruction(String type, String modifier, String name) {
-        String street = (name != null && !name.isBlank()) ? " on " + name : "";
+    private String buildInstruction(String type, String modifier, String street) {
+        String streetName = (street != null && !street.isEmpty()) ? " onto " + street : "";
         if ("depart".equalsIgnoreCase(type)) {
-            return "Head " + (modifier != null ? modifier : "forward") + street;
+            return "Head out" + streetName;
         } else if ("arrive".equalsIgnoreCase(type)) {
             return "You have arrived at your destination";
         } else if ("turn".equalsIgnoreCase(type)) {
-            return "Turn " + (modifier != null ? modifier : "") + street;
-        } else if ("new name".equalsIgnoreCase(type)) {
-            return "Continue" + street;
+            return "Turn " + (modifier.isEmpty() ? "" : modifier + " ") + streetName;
+        } else if ("new name".equalsIgnoreCase(type) || "continue".equalsIgnoreCase(type)) {
+            return "Continue" + streetName;
+        } else if ("roundabout".equalsIgnoreCase(type)) {
+            return "Enter roundabout and take exit" + streetName;
         }
-        return "Continue " + (modifier != null ? modifier : "straight") + street;
+        return (type + " " + modifier + streetName).trim();
     }
 
-    private RouteResponse fallbackGeometricRoute(Coordinates origin, Coordinates destination, String mode) {
-        double distance = calculateHaversineDistance(
-                origin.getLatitude(), origin.getLongitude(),
-                destination.getLatitude(), destination.getLongitude()
-        );
+    private String formatSummary(double distanceMeters, double durationSeconds, String mode) {
+        double km = distanceMeters / 1000.0;
+        long mins = Math.round(durationSeconds / 60.0);
+        return String.format("%.1f km (%d min by %s)", km, mins, mode.toLowerCase());
+    }
 
-        double speedKmh = switch (mode.toUpperCase()) {
-            case "WALKING" -> 4.5;
+    private RouteResponse createFallbackRoute(RouteRequest request, double lat1, double lng1, double lat2, double lng2) {
+        // Haversine direct distance
+        double R = 6371000; // meters
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        double distance = R * c;
+
+        double speedKmh = switch (request.getMode().toUpperCase()) {
+            case "WALKING" -> 5.0;
             case "CYCLING" -> 15.0;
-            default -> 45.0; // DRIVING
+            default -> 45.0; // Driving average
         };
-
-        int durationSeconds = (int) ((distance / 1000.0 / speedKmh) * 3600);
+        double duration = (distance / 1000.0) / speedKmh * 3600.0;
 
         List<List<Double>> geometry = List.of(
-                List.of(origin.getLatitude(), origin.getLongitude()),
-                List.of(
-                        (origin.getLatitude() + destination.getLatitude()) / 2,
-                        (origin.getLongitude() + destination.getLongitude()) / 2
-                ),
-                List.of(destination.getLatitude(), destination.getLongitude())
+                List.of(lat1, lng1),
+                List.of(lat2, lng2)
         );
 
         List<RouteStep> steps = List.of(
-                RouteStep.builder()
-                        .instruction("Head toward destination")
-                        .distanceMeters(distance * 0.7)
-                        .durationSeconds((int) (durationSeconds * 0.7))
-                        .name("Direct Route")
-                        .build(),
-                RouteStep.builder()
-                        .instruction("Arrive at destination")
-                        .distanceMeters(distance * 0.3)
-                        .durationSeconds((int) (durationSeconds * 0.3))
-                        .name("Destination")
-                        .build()
+                RouteStep.builder().instruction("Depart origin").distanceMeters(distance / 2).durationSeconds(duration / 2).build(),
+                RouteStep.builder().instruction("Arrive at destination").distanceMeters(distance / 2).durationSeconds(duration / 2).build()
         );
 
         return RouteResponse.builder()
                 .distanceMeters(distance)
-                .durationSeconds(durationSeconds)
-                .formattedDistance(formatDistance(distance))
-                .formattedDuration(formatDuration(durationSeconds))
-                .travelMode(mode.toUpperCase())
+                .durationSeconds(duration)
+                .travelMode(request.getMode().toUpperCase())
                 .geometry(geometry)
                 .steps(steps)
+                .summary(formatSummary(distance, duration, request.getMode()))
                 .build();
-    }
-
-    private double calculateHaversineDistance(double lat1, double lon1, double lat2, double lon2) {
-        double R = 6371000; // Earth radius in meters
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    }
-
-    private String formatDistance(double meters) {
-        if (meters >= 1000) {
-            return String.format("%.1f km", meters / 1000.0);
-        }
-        return String.format("%.0f m", meters);
-    }
-
-    private String formatDuration(int seconds) {
-        int mins = seconds / 60;
-        int hours = mins / 60;
-        if (hours > 0) {
-            return String.format("%d hr %d min", hours, mins % 60);
-        }
-        return String.format("%d min", Math.max(1, mins));
     }
 }

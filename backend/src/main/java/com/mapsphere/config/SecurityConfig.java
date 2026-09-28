@@ -39,24 +39,19 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
-                .requestMatchers(
-                    "/api/health",
-                    "/api/places/test/**",
-                    "/api/v1/auth/**",
-                    "/ws/**",
-                    "/v3/api-docs/**",
-                    "/swagger-ui/**",
-                    "/swagger-ui.html"
-                ).permitAll()
-                // Public read-only map exploration
+                // Public health and WebSocket handshakes
+                .requestMatchers("/api/health", "/ws-mapsphere/**").permitAll()
+                // Public Auth endpoints
+                .requestMatchers("/api/v1/auth/**").permitAll()
+                // Public map reading: searching, viewing places, calculating routes, live tracking viewer
                 .requestMatchers(HttpMethod.GET, "/api/v1/places/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/search/**").permitAll()
+                .requestMatchers("/api/v1/search/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/routes/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/location/share/**").permitAll()
-                // Admin dashboard
+                .requestMatchers("/api/v1/location/track/**").permitAll()
+                .requestMatchers("/api/places/test/**").permitAll()
+                // Admin endpoints
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                // All other operations (favorites, history, user profile, place creation, sharing) require authentication
+                // All other endpoints (users/me, favorites, history, start sharing) require authentication
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -66,14 +61,14 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
+        source.registerCorsConfiguration("/**", config);
         return source;
     }
 

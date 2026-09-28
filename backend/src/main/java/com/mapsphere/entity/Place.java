@@ -8,8 +8,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "places", indexes = {
-    @Index(name = "idx_places_category", columnList = "category"),
-    @Index(name = "idx_places_name", columnList = "name")
+    @Index(name = "idx_places_category", columnList = "category")
 })
 @Getter
 @Setter
@@ -28,7 +27,7 @@ public class Place {
     @Column(length = 500)
     private String description;
 
-    @Column(nullable = false, length = 50)
+    @Column(length = 50)
     private String category;
 
     @Column(length = 255)
@@ -37,7 +36,7 @@ public class Place {
     @Column(columnDefinition = "geometry(Point, 4326)", nullable = false)
     private Point location;
 
-    @Column(length = 30)
+    @Column(length = 50)
     private String phone;
 
     @Column(length = 255)
@@ -45,7 +44,7 @@ public class Place {
 
     private Double rating;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")

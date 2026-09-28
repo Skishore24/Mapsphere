@@ -1,108 +1,81 @@
 package com.mapsphere.service;
 
-import com.mapsphere.dto.location.LiveLocationUpdate;
-import com.mapsphere.dto.location.ShareLocationResponse;
-import com.mapsphere.entity.LiveLocationSession;
+import com.mapsphere.entity.LocationShareSession;
 import com.mapsphere.entity.User;
-import com.mapsphere.exception.BadRequestException;
 import com.mapsphere.exception.ResourceNotFoundException;
-import com.mapsphere.repository.LiveLocationSessionRepository;
-import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.GeometryFactory;
-import org.locationtech.jts.geom.Point;
-import org.locationtech.jts.geom.PrecisionModel;
+import com.mapsphere.repository.LocationShareSessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class LocationService {
 
-    private final LiveLocationSessionRepository sessionRepository;
-    private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+    private final LocationShareSessionRepository sessionRepository;
 
-    public LocationService(LiveLocationSessionRepository sessionRepository) {
+    public LocationService(LocationShareSessionRepository sessionRepository) {
         this.sessionRepository = sessionRepository;
     }
 
     @Transactional
-    public ShareLocationResponse createShareSession(User user, int durationMinutes) {
-        int duration = durationMinutes > 0 && durationMinutes <= 1440 ? durationMinutes : 60; // Max 24h
+    public Map<String, Object> createShareSession(User user) {
         String shareId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        LocalDateTime expiresAt = LocalDateTime.now().plusHours(2);
 
-        LiveLocationSession session = LiveLocationSession.builder()
-                .user(user)
+        LocationShareSession session = LocationShareSession.builder()
                 .shareId(shareId)
+                .user(user)
+                .expiresAt(expiresAt)
                 .active(true)
-                .expiresAt(LocalDateTime.now().plusMinutes(duration))
                 .build();
 
-        LiveLocationSession saved = sessionRepository.save(session);
-
-        return ShareLocationResponse.builder()
-                .shareId(saved.getShareId())
-                .expiresAt(saved.getExpiresAt())
-                .active(saved.isActive())
-                .build();
-    }
-
-    public ShareLocationResponse getSession(String shareId) {
-        LiveLocationSession session = sessionRepository.findByShareId(shareId)
-                .orElseThrow(() -> new ResourceNotFoundException("Live location session not found"));
-
-        if (!session.isActive() || session.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new BadRequestException("Live location session has expired or been terminated");
-        }
-
-        ShareLocationResponse.ShareLocationResponseBuilder builder = ShareLocationResponse.builder()
-                .shareId(session.getShareId())
-                .expiresAt(session.getExpiresAt())
-                .active(session.isActive())
-                .accuracy(session.getAccuracy())
-                .heading(session.getHeading())
-                .speed(session.getSpeed());
-
-        if (session.getLocation() != null) {
-            builder.lastLatitude(session.getLocation().getY());
-            builder.lastLongitude(session.getLocation().getX());
-        }
-
-        return builder.build();
-    }
-
-    @Transactional
-    public void stopSession(String shareId, User user) {
-        LiveLocationSession session = sessionRepository.findByShareId(shareId)
-                .orElseThrow(() -> new ResourceNotFoundException("Live location session not found"));
-
-        if (!session.getUser().getId().equals(user.getId())) {
-            throw new BadRequestException("You are not authorized to stop this session");
-        }
-
-        session.setActive(false);
         sessionRepository.save(session);
+
+        return Map.of(
+                "shareId", shareId,
+                "expiresAt", expiresAt.toString(),
+                "trackingUrl", "/share/" + shareId
+        );
+    }
+
+    public LocationShareSession getSession(String shareId) {
+        LocationShareSession session = sessionRepository.findByShareIdAndActiveTrue(shareId)
+                .orElseThrow(() -> new ResourceNotFoundException("Live tracking session not found or expired"));
+
+        if (session.getExpiresAt().isBefore(LocalDateTime.now())) {
+            session.setActive(false);
+            sessionRepository.save(session);
+            throw new ResourceNotFoundException("This live tracking link has expired.");
+        }
+
+        return session;
     }
 
     @Transactional
-    public LiveLocationUpdate updateLocation(LiveLocationUpdate update) {
-        LiveLocationSession session = sessionRepository.findByShareId(update.getShareId())
-                .orElse(null);
+    public void recordLocationUpdate(String shareId, double lat, double lng, Double accuracy, Double heading, Double speed) {
+        sessionRepository.findByShareIdAndActiveTrue(shareId).ifPresent(session -> {
+            if (session.getExpiresAt().isAfter(LocalDateTime.now())) {
+                session.setLastLat(lat);
+                session.setLastLng(lng);
+                session.setLastAccuracy(accuracy);
+                session.setLastHeading(heading);
+                session.setLastSpeed(speed);
+                session.setLastUpdate(LocalDateTime.now());
+                sessionRepository.save(session);
+            }
+        });
+    }
 
-        if (session != null && session.isActive() && session.getExpiresAt().isAfter(LocalDateTime.now())) {
-            Point point = geometryFactory.createPoint(new Coordinate(update.getLongitude(), update.getLatitude()));
-            session.setLocation(point);
-            session.setAccuracy(update.getAccuracy());
-            session.setHeading(update.getHeading());
-            session.setSpeed(update.getSpeed());
-            sessionRepository.save(session);
-        }
-
-        if (update.getTimestamp() == null) {
-            update.setTimestamp(System.currentTimeMillis());
-        }
-
-        return update;
+    @Transactional
+    public void stopShareSession(String shareId, User user) {
+        sessionRepository.findByShareId(shareId).ifPresent(session -> {
+            if (session.getUser().getId().equals(user.getId())) {
+                session.setActive(false);
+                sessionRepository.save(session);
+            }
+        });
     }
 }

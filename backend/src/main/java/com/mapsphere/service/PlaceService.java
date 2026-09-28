@@ -1,7 +1,6 @@
 package com.mapsphere.service;
 
-import com.mapsphere.dto.place.PlaceRequest;
-import com.mapsphere.dto.place.PlaceResponse;
+import com.mapsphere.dto.place.PlaceDto;
 import com.mapsphere.entity.Place;
 import com.mapsphere.exception.ResourceNotFoundException;
 import com.mapsphere.repository.PlaceRepository;
@@ -9,8 +8,6 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.PrecisionModel;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,53 +23,69 @@ public class PlaceService {
         this.placeRepository = placeRepository;
     }
 
-    public Page<PlaceResponse> getPlaces(int page, int size) {
-        return placeRepository.findAll(PageRequest.of(page, size)).map(this::toResponse);
+    public List<PlaceDto> getAllPlaces() {
+        return placeRepository.findAll().stream().map(this::toDto).toList();
     }
 
-    public PlaceResponse getPlaceById(Long id) {
+    public PlaceDto getPlaceById(Long id) {
         Place place = placeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Place not found with id: " + id));
-        return toResponse(place);
+        return toDto(place);
+    }
+
+    public List<PlaceDto> getNearby(double lat, double lng, double radiusMeters) {
+        return placeRepository.findNearbyPlaces(lat, lng, radiusMeters)
+                .stream().map(this::toDto).toList();
+    }
+
+    public List<PlaceDto> getInBoundingBox(double minLat, double minLng, double maxLat, double maxLng) {
+        return placeRepository.findInBoundingBox(minLat, minLng, maxLat, maxLng)
+                .stream().map(this::toDto).toList();
+    }
+
+    public List<PlaceDto> getByCategory(String category) {
+        return placeRepository.findByCategoryIgnoreCase(category)
+                .stream().map(this::toDto).toList();
     }
 
     @Transactional
-    public PlaceResponse createPlace(PlaceRequest request) {
-        Point point = geometryFactory.createPoint(new Coordinate(request.getLongitude(), request.getLatitude()));
+    public PlaceDto createPlace(PlaceDto dto) {
+        Point location = geometryFactory.createPoint(new Coordinate(dto.getLongitude(), dto.getLatitude()));
 
         Place place = Place.builder()
-                .name(request.getName())
-                .description(request.getDescription())
-                .category(request.getCategory().toUpperCase())
-                .address(request.getAddress())
-                .location(point)
-                .phone(request.getPhone())
-                .website(request.getWebsite())
-                .rating(request.getRating() != null ? request.getRating() : 0.0)
+                .name(dto.getName())
+                .description(dto.getDescription())
+                .category(dto.getCategory().toUpperCase())
+                .address(dto.getAddress())
+                .location(location)
+                .phone(dto.getPhone())
+                .website(dto.getWebsite())
+                .rating(dto.getRating() != null ? dto.getRating() : 4.0)
                 .build();
 
-        return toResponse(placeRepository.save(place));
+        return toDto(placeRepository.save(place));
     }
 
     @Transactional
-    public PlaceResponse updatePlace(Long id, PlaceRequest request) {
+    public PlaceDto updatePlace(Long id, PlaceDto dto) {
         Place place = placeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Place not found with id: " + id));
 
-        Point point = geometryFactory.createPoint(new Coordinate(request.getLongitude(), request.getLatitude()));
-
-        place.setName(request.getName());
-        place.setDescription(request.getDescription());
-        place.setCategory(request.getCategory().toUpperCase());
-        place.setAddress(request.getAddress());
-        place.setLocation(point);
-        place.setPhone(request.getPhone());
-        place.setWebsite(request.getWebsite());
-        if (request.getRating() != null) {
-            place.setRating(request.getRating());
+        place.setName(dto.getName());
+        place.setDescription(dto.getDescription());
+        place.setCategory(dto.getCategory().toUpperCase());
+        place.setAddress(dto.getAddress());
+        place.setPhone(dto.getPhone());
+        place.setWebsite(dto.getWebsite());
+        if (dto.getRating() != null) {
+            place.setRating(dto.getRating());
         }
 
-        return toResponse(placeRepository.save(place));
+        if (dto.getLatitude() != null && dto.getLongitude() != null) {
+            place.setLocation(geometryFactory.createPoint(new Coordinate(dto.getLongitude(), dto.getLatitude())));
+        }
+
+        return toDto(placeRepository.save(place));
     }
 
     @Transactional
@@ -83,20 +96,8 @@ public class PlaceService {
         placeRepository.deleteById(id);
     }
 
-    public List<PlaceResponse> getNearbyPlaces(double lat, double lng, double radiusMeters, int limit) {
-        return placeRepository.findNearbyPlaces(lat, lng, radiusMeters, limit).stream()
-                .map(this::toResponse)
-                .toList();
-    }
-
-    public List<PlaceResponse> getPlacesInBoundingBox(double minLat, double minLng, double maxLat, double maxLng, int limit) {
-        return placeRepository.findInBoundingBox(minLat, minLng, maxLat, maxLng, limit).stream()
-                .map(this::toResponse)
-                .toList();
-    }
-
-    public PlaceResponse toResponse(Place place) {
-        return PlaceResponse.builder()
+    public PlaceDto toDto(Place place) {
+        return PlaceDto.builder()
                 .id(place.getId())
                 .name(place.getName())
                 .description(place.getDescription())
@@ -107,7 +108,6 @@ public class PlaceService {
                 .phone(place.getPhone())
                 .website(place.getWebsite())
                 .rating(place.getRating())
-                .createdAt(place.getCreatedAt())
                 .build();
     }
 }

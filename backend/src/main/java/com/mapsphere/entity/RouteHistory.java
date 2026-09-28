@@ -22,20 +22,24 @@ public class RouteHistory {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "start_location", nullable = false, length = 255)
-    private String startLocation;
+    @Column(name = "origin_name", length = 255)
+    private String originName;
 
-    @Column(name = "destination_location", nullable = false, length = 255)
-    private String destinationLocation;
+    @Column(name = "destination_name", length = 255)
+    private String destinationName;
 
-    private Double distance;
+    private Double originLat;
+    private Double originLng;
+    private Double destinationLat;
+    private Double destinationLng;
 
-    private Integer duration;
+    private Double distanceMeters;
+    private Double durationSeconds;
 
-    @Column(name = "travel_mode", length = 30)
-    private String travelMode;
+    @Column(name = "travel_mode", length = 20)
+    private String travelMode; // DRIVING, WALKING, CYCLING
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @PrePersist
