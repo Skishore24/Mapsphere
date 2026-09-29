@@ -8,7 +8,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "places", indexes = {
-    @Index(name = "idx_places_category", columnList = "category")
+    @Index(name = "idx_places_category", columnList = "category"),
+    @Index(name = "idx_places_name", columnList = "name"),
+    @Index(name = "idx_places_created_at", columnList = "created_at")
 })
 @Getter
 @Setter
@@ -27,7 +29,7 @@ public class Place {
     @Column(length = 500)
     private String description;
 
-    @Column(length = 50)
+    @Column(length = 50, nullable = false)
     private String category;
 
     @Column(length = 255)
@@ -41,6 +43,9 @@ public class Place {
 
     @Column(length = 255)
     private String website;
+
+    @Column(name = "opening_hours", length = 100)
+    private String openingHours;
 
     private Double rating;
 

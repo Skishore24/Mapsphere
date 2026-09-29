@@ -60,6 +60,7 @@ public class PlaceService {
                 .location(location)
                 .phone(dto.getPhone())
                 .website(dto.getWebsite())
+                .openingHours(dto.getOpeningHours())
                 .rating(dto.getRating() != null ? dto.getRating() : 4.0)
                 .build();
 
@@ -77,6 +78,7 @@ public class PlaceService {
         place.setAddress(dto.getAddress());
         place.setPhone(dto.getPhone());
         place.setWebsite(dto.getWebsite());
+        place.setOpeningHours(dto.getOpeningHours());
         if (dto.getRating() != null) {
             place.setRating(dto.getRating());
         }
@@ -107,6 +109,7 @@ public class PlaceService {
                 .longitude(place.getLocation().getX())
                 .phone(place.getPhone())
                 .website(place.getWebsite())
+                .openingHours(place.getOpeningHours())
                 .rating(place.getRating())
                 .build();
     }

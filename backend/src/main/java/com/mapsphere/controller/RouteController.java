@@ -1,5 +1,6 @@
 package com.mapsphere.controller;
 
+import com.mapsphere.dto.common.ApiResponse;
 import com.mapsphere.dto.route.RouteRequest;
 import com.mapsphere.dto.route.RouteResponse;
 import com.mapsphere.entity.User;
@@ -27,7 +28,7 @@ public class RouteController {
     }
 
     @PostMapping
-    public ResponseEntity<RouteResponse> calculateRoute(
+    public ResponseEntity<ApiResponse<RouteResponse>> calculateRoute(
             @Valid @RequestBody RouteRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
 
@@ -36,6 +37,7 @@ public class RouteController {
             user = userRepository.findByEmail(userDetails.getUsername()).orElse(null);
         }
 
-        return ResponseEntity.ok(routeService.calculateRoute(request, user));
+        RouteResponse response = routeService.calculateRoute(request, user);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

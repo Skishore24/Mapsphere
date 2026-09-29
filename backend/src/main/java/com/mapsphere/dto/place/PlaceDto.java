@@ -30,5 +30,6 @@ public class PlaceDto {
 
     private String phone;
     private String website;
+    private String openingHours;
     private Double rating;
 }

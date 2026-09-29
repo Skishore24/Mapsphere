@@ -244,6 +244,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : null}
             <span>{isRegister ? 'Create Free Account' : 'Sign In to MapSphere'}</span>
           </button>
+
+          {!isRegister && (
+            <div style={{ marginTop: '14px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@mapsphere.com');
+                  setPassword('Admin@12345');
+                }}
+                style={{
+                  background: 'rgba(168, 85, 247, 0.12)',
+                  border: '1px solid rgba(168, 85, 247, 0.35)',
+                  color: 'var(--accent-purple)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  width: '100%',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                ⚡ Auto-fill Demo Admin Account (admin@mapsphere.com)
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Place, RouteResponse, Coordinates, LocationMessage } from '../types';
-import { Locate } from 'lucide-react';
+import { Locate, Layers, Globe, Map as MapIcon, Mountain, Check } from 'lucide-react';
 
 function getCategorySymbol(cat: string): string {
   switch (cat.toUpperCase()) {
@@ -18,6 +18,54 @@ function getCategorySymbol(cat: string): string {
     default: return '📍';
   }
 }
+
+export type BasemapStyle = 'streets' | 'osm' | 'satellite' | 'topo';
+
+interface BasemapOption {
+  id: BasemapStyle;
+  name: string;
+  badge: string;
+  url: string;
+  subdomains?: string;
+  attribution: string;
+  icon: React.ReactNode;
+}
+
+const BASEMAPS: BasemapOption[] = [
+  {
+    id: 'streets',
+    name: 'Ultra Fast Streets',
+    badge: 'Blazing CDN',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri &mdash; High-Speed CDN',
+    icon: <MapIcon size={14} />,
+  },
+  {
+    id: 'satellite',
+    name: 'Satellite Imagery',
+    badge: 'High-Res',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+    icon: <Globe size={14} />,
+  },
+  {
+    id: 'osm',
+    name: 'OpenStreetMap',
+    badge: 'Community',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    attribution: '&copy; OpenStreetMap contributors',
+    icon: <Layers size={14} />,
+  },
+  {
+    id: 'topo',
+    name: 'Topographic Terrain',
+    badge: 'Contours',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri Topo contributors',
+    icon: <Mountain size={14} />,
+  },
+];
 
 interface MapViewProps {
   places: Place[];
@@ -46,19 +94,65 @@ export const MapView: React.FC<MapViewProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const activeTileLayerRef = useRef<L.TileLayer | null>(null);
 
   const placesLayerRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const liveTrackedMarkerRef = useRef<L.Marker | null>(null);
 
+  const [currentBasemap, setCurrentBasemap] = useState<BasemapStyle>('streets');
+  const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
+
   const onViewportChangeRef = useRef(onViewportChange);
   const onMapClickRef = useRef(onMapClick);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
     onMapClickRef.current = onMapClick;
   });
+
+  // Switch basemap layer dynamically
+  const applyTileLayer = useCallback((style: BasemapStyle, map: L.Map) => {
+    if (activeTileLayerRef.current) {
+      map.removeLayer(activeTileLayerRef.current);
+    }
+
+    const cartoKey = import.meta.env.VITE_CARTO_API_KEY;
+    const customTileUrl = import.meta.env.VITE_MAP_TILE_URL;
+
+    let url: string;
+    let attribution: string;
+    let subdomains: string | undefined;
+
+    if (customTileUrl) {
+      url = customTileUrl;
+      attribution = import.meta.env.VITE_MAP_ATTRIBUTION || '&copy; Custom Tiles';
+      subdomains = 'abc';
+    } else if (cartoKey && cartoKey.trim()) {
+      url = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${cartoKey.trim()}`;
+      attribution = '&copy; OpenStreetMap &copy; CARTO';
+      subdomains = 'abcd';
+    } else {
+      const option = BASEMAPS.find(b => b.id === style) || BASEMAPS[0];
+      url = option.url;
+      attribution = option.attribution;
+      subdomains = option.subdomains;
+    }
+
+    const tileLayer = L.tileLayer(url, {
+      attribution,
+      maxZoom: 19,
+      subdomains: subdomains || 'abc',
+      keepBuffer: 8,              // Cache 8 extra tiles outside view for silky-smooth panning
+      updateWhenIdle: false,       // Load tiles continuously during drag
+      updateWhenZooming: false,    // Stretch current tiles while new zoom level loads (prevents grey flash)
+      updateInterval: 100,
+    }).addTo(map);
+
+    activeTileLayerRef.current = tileLayer;
+  }, []);
 
   // Initialize Map
   useEffect(() => {
@@ -70,31 +164,32 @@ export const MapView: React.FC<MapViewProps> = ({
       center: initialCenter,
       zoom: 14,
       zoomControl: false,
+      preferCanvas: true, // Hardware accelerated canvas rendering for crisp 60fps performance
     });
 
-    // CartoDB Voyager Tile Layer (Modern, clean, ultra-readable)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxZoom: 19,
-      subdomains: 'abcd',
-    }).addTo(map);
+    applyTileLayer(currentBasemap, map);
 
-    // Zoom Controls top right
+    // Zoom Controls bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // Places Layer
     const placesLayer = L.layerGroup().addTo(map);
     placesLayerRef.current = placesLayer;
 
-    // Viewport change listener (Bounding Box)
+    // Viewport change listener with 200ms debounce
     map.on('moveend', () => {
-      const bounds = map.getBounds();
-      onViewportChangeRef.current(
-        bounds.getSouth(),
-        bounds.getWest(),
-        bounds.getNorth(),
-        bounds.getEast()
-      );
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        const bounds = map.getBounds();
+        onViewportChangeRef.current(
+          bounds.getSouth(),
+          bounds.getWest(),
+          bounds.getNorth(),
+          bounds.getEast()
+        );
+      }, 200);
     });
 
     // Map click
@@ -109,10 +204,20 @@ export const MapView: React.FC<MapViewProps> = ({
     onViewportChangeRef.current(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
 
     return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       map.remove();
       mapRef.current = null;
     };
   }, []);
+
+  // Change basemap style
+  const handleSelectBasemap = (style: BasemapStyle) => {
+    setCurrentBasemap(style);
+    setIsLayerMenuOpen(false);
+    if (mapRef.current) {
+      applyTileLayer(style, mapRef.current);
+    }
+  };
 
   // Update Places Markers
   useEffect(() => {
@@ -235,8 +340,103 @@ export const MapView: React.FC<MapViewProps> = ({
         zIndex: 990,
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '10px',
       }}>
+        {/* Basemap Switcher Menu Popover */}
+        {isLayerMenuOpen && (
+          <div style={{
+            position: 'absolute',
+            bottom: '105px',
+            right: '0',
+            background: 'rgba(15, 23, 42, 0.94)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+            width: '210px',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+            animation: 'fadeIn 0.15s ease-out',
+          }}>
+            <div style={{
+              fontSize: '11px',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.6px',
+              color: 'var(--text-muted)',
+              padding: '4px 8px',
+            }}>
+              Basemap Layer
+            </div>
+
+            {BASEMAPS.map(base => {
+              const isSelected = currentBasemap === base.id;
+              return (
+                <button
+                  key={base.id}
+                  onClick={() => handleSelectBasemap(base.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    background: isSelected ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                    border: isSelected ? '1px solid var(--accent-primary)' : '1px solid transparent',
+                    color: isSelected ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    textAlign: 'left',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={e => {
+                    if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: isSelected ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
+                      {base.icon}
+                    </span>
+                    <span>{base.name}</span>
+                  </div>
+                  {isSelected && <Check size={14} color="var(--accent-primary)" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Layer Switcher Trigger Button */}
+        <button
+          onClick={() => setIsLayerMenuOpen(prev => !prev)}
+          title="Change Map Style"
+          style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: 'var(--radius-md)',
+            background: isLayerMenuOpen ? 'var(--accent-primary)' : 'var(--bg-surface-elevated)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid ' + (isLayerMenuOpen ? 'var(--accent-primary)' : 'var(--border-subtle)'),
+            color: isLayerMenuOpen ? '#fff' : 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-md)',
+            transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <Layers size={20} />
+        </button>
+
         {/* Locate User Button */}
         <button
           onClick={onLocateUser}

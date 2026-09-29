@@ -1,0 +1,15 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+mapsphere:
+  seed:
+    enabled: true
+
+logging:
+  level:
+    com.mapsphere: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: INFO

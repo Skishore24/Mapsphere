@@ -1,0 +1,16 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: ${HIBERNATE_DDL_AUTO:update}
+    show-sql: false
+
+mapsphere:
+  seed:
+    enabled: ${SEED_ENABLED:true}
+
+logging:
+  level:
+    com.mapsphere: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.hibernate: WARN

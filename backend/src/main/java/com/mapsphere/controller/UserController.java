@@ -1,5 +1,6 @@
 package com.mapsphere.controller;
 
+import com.mapsphere.dto.common.ApiResponse;
 import com.mapsphere.dto.user.UserResponse;
 import com.mapsphere.service.UserService;
 import org.springframework.http.ResponseEntity;
@@ -20,8 +21,8 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<UserResponse>> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
         UserResponse response = userService.getUserByEmail(userDetails.getUsername());
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

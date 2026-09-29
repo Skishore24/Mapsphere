@@ -1,7 +1,10 @@
 package com.mapsphere.controller;
 
+import com.mapsphere.dto.common.ApiResponse;
 import com.mapsphere.entity.LocationShareSession;
 import com.mapsphere.entity.User;
+import com.mapsphere.exception.ResourceNotFoundException;
+import com.mapsphere.exception.SessionExpiredException;
 import com.mapsphere.repository.UserRepository;
 import com.mapsphere.service.LocationService;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -25,14 +29,20 @@ public class LocationController {
     }
 
     @PostMapping("/share")
-    public ResponseEntity<Map<String, Object>> startLocationShare(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
-        return ResponseEntity.ok(locationService.createShareSession(user));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> startLocationShare(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Map<String, Object> sessionData = locationService.createShareSession(user);
+        return ResponseEntity.ok(ApiResponse.success(sessionData));
     }
 
-    @GetMapping("/track/{shareId}")
-    public ResponseEntity<Map<String, Object>> getLiveTrackingSession(@PathVariable String shareId) {
+    @GetMapping({"/track/{shareId}", "/share/{shareId}"})
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getLiveTrackingSession(@PathVariable String shareId) {
         LocationShareSession session = locationService.getSession(shareId);
+
+        if (!session.isActive() || session.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new SessionExpiredException("This live sharing session has expired or was ended by the owner.");
+        }
 
         Map<String, Object> response = new HashMap<>();
         response.put("shareId", session.getShareId());
@@ -46,15 +56,16 @@ public class LocationController {
         response.put("expiresAt", session.getExpiresAt());
         response.put("active", session.isActive());
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @DeleteMapping("/share/{shareId}")
-    public ResponseEntity<Void> stopLocationShare(
+    public ResponseEntity<ApiResponse<Void>> stopLocationShare(
             @PathVariable String shareId,
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         locationService.stopShareSession(shareId, user);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null, "Live sharing stopped successfully"));
     }
 }

@@ -26,12 +26,22 @@ public class HistoryService {
     }
 
     @Transactional
+    public void deleteSearchHistoryItem(User user, Long id) {
+        searchHistoryRepository.deleteByIdAndUser(id, user);
+    }
+
+    @Transactional
     public void clearSearchHistory(User user) {
         searchHistoryRepository.deleteByUser(user);
     }
 
     public List<RouteHistory> getRouteHistory(User user) {
         return routeHistoryRepository.findTop20ByUserOrderByCreatedAtDesc(user);
+    }
+
+    @Transactional
+    public void deleteRouteHistoryItem(User user, Long id) {
+        routeHistoryRepository.deleteByIdAndUser(id, user);
     }
 
     @Transactional

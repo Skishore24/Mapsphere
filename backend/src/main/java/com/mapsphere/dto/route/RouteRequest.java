@@ -10,6 +10,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class RouteRequest {
+
     @Valid
     @NotNull(message = "Origin coordinates are required")
     private Coordinates origin;
@@ -23,4 +24,13 @@ public class RouteRequest {
 
     @Builder.Default
     private String mode = "DRIVING"; // DRIVING, WALKING, CYCLING
+
+    @Builder.Default
+    private boolean avoidTolls = false;
+
+    @Builder.Default
+    private boolean avoidHighways = false;
+
+    @Builder.Default
+    private boolean avoidFerries = false;
 }

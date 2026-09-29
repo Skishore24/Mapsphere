@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8081';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('mapsphere_token');
@@ -33,5 +33,15 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
     return {} as T;
   }
 
-  return response.json();
+  const json = await response.json();
+
+  // If response is wrapped in standard ApiResponse<T>, unwrap data
+  if (json && typeof json === 'object' && 'success' in json) {
+    if (!json.success) {
+      throw new Error(json.message || 'Request failed');
+    }
+    return json.data as T;
+  }
+
+  return json as T;
 }

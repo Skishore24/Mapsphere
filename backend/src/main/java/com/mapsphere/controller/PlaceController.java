@@ -1,5 +1,6 @@
 package com.mapsphere.controller;
 
+import com.mapsphere.dto.common.ApiResponse;
 import com.mapsphere.dto.place.PlaceDto;
 import com.mapsphere.service.PlaceService;
 import jakarta.validation.Valid;
@@ -20,45 +21,47 @@ public class PlaceController {
     }
 
     @GetMapping
-    public ResponseEntity<List<PlaceDto>> getAllPlaces() {
-        return ResponseEntity.ok(placeService.getAllPlaces());
+    public ResponseEntity<ApiResponse<List<PlaceDto>>> getAllPlaces() {
+        return ResponseEntity.ok(ApiResponse.success(placeService.getAllPlaces()));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<PlaceDto> getPlaceById(@PathVariable Long id) {
-        return ResponseEntity.ok(placeService.getPlaceById(id));
+    public ResponseEntity<ApiResponse<PlaceDto>> getPlaceById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(placeService.getPlaceById(id)));
     }
 
     @GetMapping("/nearby")
-    public ResponseEntity<List<PlaceDto>> getNearby(
+    public ResponseEntity<ApiResponse<List<PlaceDto>>> getNearby(
             @RequestParam double lat,
             @RequestParam double lng,
             @RequestParam(defaultValue = "5000") double radius) {
-        return ResponseEntity.ok(placeService.getNearby(lat, lng, radius));
+        return ResponseEntity.ok(ApiResponse.success(placeService.getNearby(lat, lng, radius)));
     }
 
     @GetMapping("/bbox")
-    public ResponseEntity<List<PlaceDto>> getInBoundingBox(
+    public ResponseEntity<ApiResponse<List<PlaceDto>>> getInBoundingBox(
             @RequestParam double minLat,
             @RequestParam double minLng,
             @RequestParam double maxLat,
             @RequestParam double maxLng) {
-        return ResponseEntity.ok(placeService.getInBoundingBox(minLat, minLng, maxLat, maxLng));
+        return ResponseEntity.ok(ApiResponse.success(placeService.getInBoundingBox(minLat, minLng, maxLat, maxLng)));
     }
 
     @PostMapping
-    public ResponseEntity<PlaceDto> createPlace(@Valid @RequestBody PlaceDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(placeService.createPlace(dto));
+    public ResponseEntity<ApiResponse<PlaceDto>> createPlace(@Valid @RequestBody PlaceDto dto) {
+        PlaceDto created = placeService.createPlace(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created, "Place created successfully"));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<PlaceDto> updatePlace(@PathVariable Long id, @Valid @RequestBody PlaceDto dto) {
-        return ResponseEntity.ok(placeService.updatePlace(id, dto));
+    public ResponseEntity<ApiResponse<PlaceDto>> updatePlace(@PathVariable Long id, @Valid @RequestBody PlaceDto dto) {
+        PlaceDto updated = placeService.updatePlace(id, dto);
+        return ResponseEntity.ok(ApiResponse.success(updated, "Place updated successfully"));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deletePlace(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deletePlace(@PathVariable Long id) {
         placeService.deletePlace(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null, "Place deleted successfully"));
     }
 }

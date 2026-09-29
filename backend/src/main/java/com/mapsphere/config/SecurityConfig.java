@@ -1,6 +1,7 @@
 package com.mapsphere.config;
 
 import com.mapsphere.security.JwtAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,6 +20,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -27,6 +29,9 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
+
+    @Value("${mapsphere.security.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
+    private String allowedCorsOrigins;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
@@ -45,9 +50,11 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 // Public map reading: searching, viewing places, calculating routes, live tracking viewer
                 .requestMatchers(HttpMethod.GET, "/api/v1/places/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/map/**").permitAll()
                 .requestMatchers("/api/v1/search/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/routes/**").permitAll()
                 .requestMatchers("/api/v1/location/track/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/location/share/**").permitAll()
                 .requestMatchers("/api/places/test/**").permitAll()
                 // Admin endpoints
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
@@ -61,11 +68,17 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        List<String> origins = Arrays.stream(allowedCorsOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
         config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

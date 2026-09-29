@@ -1,0 +1,39 @@
+# ==============================================================================
+# Render Blueprint Specification for MapSphere
+# Automatically deploys PostgreSQL (PostGIS) and Spring Boot Backend Web Service
+# ==============================================================================
+services:
+  - type: web
+    name: mapsphere-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mapsphere-db
+          property: connectionString
+      - key: HIBERNATE_DDL_AUTO
+        value: update
+      - key: SEED_ENABLED
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://*.vercel.app,http://localhost:5173
+      - key: GEOCODING_URL
+        value: https://nominatim.openstreetmap.org
+      - key: ROUTING_URL
+        value: https://router.project-osrm.org
+
+databases:
+  - name: mapsphere-db
+    databaseName: mapsphere
+    user: postgres
+    plan: free
+    region: oregon

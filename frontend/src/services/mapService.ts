@@ -10,8 +10,20 @@ export const mapService = {
     return apiFetch<Place[]>(`/api/v1/places/nearby?lat=${lat}&lng=${lng}&radius=${radiusMeters}`);
   },
 
-  async getPlacesInBoundingBox(minLat: number, minLng: number, maxLat: number, maxLng: number): Promise<Place[]> {
-    return apiFetch<Place[]>(`/api/v1/places/bbox?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}`);
+  async getPlacesInBoundingBox(
+    minLat: number,
+    minLng: number,
+    maxLat: number,
+    maxLng: number,
+    zoom: number = 14,
+    category?: string | null,
+    signal?: AbortSignal
+  ): Promise<Place[]> {
+    const catParam = category && category !== 'ALL' ? `&category=${encodeURIComponent(category)}` : '';
+    return apiFetch<Place[]>(
+      `/api/v1/map/places/bbox?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}&zoom=${zoom}${catParam}`,
+      { signal }
+    );
   },
 
   async getPlaceById(id: number): Promise<Place> {

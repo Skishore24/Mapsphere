@@ -1,8 +1,10 @@
 package com.mapsphere.controller;
 
+import com.mapsphere.dto.common.ApiResponse;
 import com.mapsphere.entity.RouteHistory;
 import com.mapsphere.entity.SearchHistory;
 import com.mapsphere.entity.User;
+import com.mapsphere.exception.ResourceNotFoundException;
 import com.mapsphere.repository.UserRepository;
 import com.mapsphere.service.HistoryService;
 import org.springframework.http.ResponseEntity;
@@ -25,28 +27,51 @@ public class HistoryController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<SearchHistory>> getSearchHistory(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
-        return ResponseEntity.ok(historyService.getSearchHistory(user));
+    public ResponseEntity<ApiResponse<List<SearchHistory>>> getSearchHistory(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.success(historyService.getSearchHistory(user)));
+    }
+
+    @DeleteMapping("/search/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteSearchHistoryItem(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        historyService.deleteSearchHistoryItem(user, id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Search history entry deleted"));
     }
 
     @DeleteMapping("/search")
-    public ResponseEntity<Void> clearSearchHistory(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+    public ResponseEntity<ApiResponse<Void>> clearSearchHistory(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
         historyService.clearSearchHistory(user);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null, "Search history cleared"));
     }
 
     @GetMapping("/routes")
-    public ResponseEntity<List<RouteHistory>> getRouteHistory(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
-        return ResponseEntity.ok(historyService.getRouteHistory(user));
+    public ResponseEntity<ApiResponse<List<RouteHistory>>> getRouteHistory(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.success(historyService.getRouteHistory(user)));
+    }
+
+    @DeleteMapping("/routes/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteRouteHistoryItem(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        historyService.deleteRouteHistoryItem(user, id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Route history entry deleted"));
     }
 
     @DeleteMapping("/routes")
-    public ResponseEntity<Void> clearRouteHistory(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByEmail(userDetails.getUsername()).orElseThrow();
+    public ResponseEntity<ApiResponse<Void>> clearRouteHistory(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
         historyService.clearRouteHistory(user);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null, "Route history cleared"));
+    }
+
+    private User getUser(UserDetails userDetails) {
+        return userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 }
