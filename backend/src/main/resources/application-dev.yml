@@ -1,4 +1,6 @@
 spring:
+  datasource:
+    password: ${DB_PASSWORD:Admin@123}
   jpa:
     hibernate:
       ddl-auto: update

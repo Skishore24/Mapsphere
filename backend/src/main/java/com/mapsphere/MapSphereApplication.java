@@ -11,9 +11,12 @@ import java.nio.file.Paths;
 @SpringBootApplication
 public class MapSphereApplication {
 
-	public static void main(String[] args) {
+	static {
 		loadDotEnv();
 		normalizeRenderDatabaseUrl();
+	}
+
+	public static void main(String[] args) {
 		SpringApplication.run(MapSphereApplication.class, args);
 	}
 
