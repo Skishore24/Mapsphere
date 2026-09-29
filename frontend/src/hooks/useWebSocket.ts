@@ -9,7 +9,6 @@ export function useWebSocket(shareId?: string | null, onLocationReceived?: (msg:
 
   useEffect(() => {
     if (!shareId) {
-      setIsConnected(false);
       return;
     }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { MapView } from './components/MapView';
 import { SearchBox } from './components/SearchBox';
@@ -40,19 +40,18 @@ function MapSphereApp() {
   // Live Location Sharing State
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
-  const [trackingShareId, setTrackingShareId] = useState<string | null>(null);
+  const [trackingShareId] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('track');
+  });
   const [liveTrackedLocation, setLiveTrackedLocation] = useState<LocationMessage | null>(null);
 
   // Check URL query for tracking link: ?track={shareId}
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const trackId = params.get('track');
-    if (trackId) {
-      setTrackingShareId(trackId);
-      locationService.getTrackingSession(trackId).then(session => {
+    if (trackingShareId) {
+      locationService.getTrackingSession(trackingShareId).then(session => {
         if (session.latitude && session.longitude) {
           setLiveTrackedLocation({
-            shareId: trackId,
+            shareId: trackingShareId,
             latitude: session.latitude,
             longitude: session.longitude,
             accuracy: session.accuracy,
@@ -63,7 +62,7 @@ function MapSphereApp() {
         }
       }).catch(err => console.warn('Could not load tracking link', err));
     }
-  }, []);
+  }, [trackingShareId]);
 
   // WebSocket for Live Tracking & Broadcasting
   const handleLocationReceived = useCallback((msg: LocationMessage) => {
@@ -217,6 +216,7 @@ function MapSphereApp() {
       {/* Place Details Modal / Card */}
       {selectedPlace && (
         <PlaceDetailsModal
+          key={selectedPlace.id}
           place={selectedPlace}
           onClose={() => setSelectedPlace(null)}
           onDirectionsTo={handleDirectionsTo}
@@ -237,7 +237,7 @@ function MapSphereApp() {
       {activePanel === 'history' && (
         <HistoryDrawer
           onClose={() => setActivePanel(null)}
-          onSelectSearch={q => {
+          onSelectSearch={_q => {
             // Trigger search with query
           }}
         />

@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
 import { Place } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { 
   X, 
   MapPin, 
   Navigation, 
   Bookmark, 
-  BookmarkCheck, 
   Phone, 
   Globe, 
-  Star,
-  Check
+  Star, 
+  Check 
 } from 'lucide-react';
 
 interface PlaceDetailsModalProps {
@@ -29,9 +28,10 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
   isSaved = false,
 }) => {
   const { isAuthenticated } = useAuth();
-  const [selectedTag, setSelectedTag] = useState('FAVORITE');
+  const selectedTag = 'FAVORITE';
   const [isSaving, setIsSaving] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(isSaved);
+  const [justSaved, setJustSaved] = useState(false);
+  const isSavedActive = isSaved || justSaved;
 
   if (!place) return null;
 
@@ -39,7 +39,7 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
     setIsSaving(true);
     try {
       await onSaveFavorite(place.id, place.name, selectedTag);
-      setSavedSuccess(true);
+      setJustSaved(true);
     } catch (err) {
       console.error('Failed to save place', err);
     } finally {
@@ -159,7 +159,7 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
 
         <button
           onClick={handleSave}
-          disabled={!isAuthenticated || isSaving || savedSuccess}
+          disabled={!isAuthenticated || isSaving || isSavedActive}
           title={!isAuthenticated ? 'Sign in to save places' : ''}
           style={{
             display: 'flex',
@@ -168,16 +168,16 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
             gap: '8px',
             padding: '11px',
             borderRadius: 'var(--radius-md)',
-            background: savedSuccess ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-            color: savedSuccess ? 'var(--accent-emerald)' : '#fff',
-            border: '1px solid ' + (savedSuccess ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)'),
+            background: isSavedActive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+            color: isSavedActive ? 'var(--accent-emerald)' : '#fff',
+            border: '1px solid ' + (isSavedActive ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)'),
             fontWeight: 600,
             fontSize: '13px',
-            cursor: !isAuthenticated || savedSuccess ? 'default' : 'pointer',
+            cursor: !isAuthenticated || isSavedActive ? 'default' : 'pointer',
             opacity: !isAuthenticated ? 0.6 : 1,
           }}
         >
-          {savedSuccess ? (
+          {isSavedActive ? (
             <>
               <Check size={16} />
               <span>Saved</span>

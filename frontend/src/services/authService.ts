@@ -32,8 +32,13 @@ export const authService = {
   },
 
   getCurrentUser(): User | null {
-    const stored = localStorage.getItem('mapsphere_user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem('mapsphere_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      localStorage.removeItem('mapsphere_user');
+      return null;
+    }
   },
 
   getToken(): string | null {

@@ -41,6 +41,20 @@ export const DirectionsPanel: React.FC<DirectionsPanelProps> = ({
   const [destName, setDestName] = useState(initialDestination?.name || '');
   const [destCoords, setDestCoords] = useState<Coordinates | null>(initialDestination?.coords || null);
 
+  const [prevOrigin, setPrevOrigin] = useState(initialOrigin);
+  if (initialOrigin !== prevOrigin) {
+    setPrevOrigin(initialOrigin);
+    setOriginName(initialOrigin?.name || (userCoords ? 'My Current Location' : ''));
+    setOriginCoords(initialOrigin?.coords || userCoords || null);
+  }
+
+  const [prevDest, setPrevDest] = useState(initialDestination);
+  if (initialDestination !== prevDest) {
+    setPrevDest(initialDestination);
+    setDestName(initialDestination?.name || '');
+    setDestCoords(initialDestination?.coords || null);
+  }
+
   const [showSteps, setShowSteps] = useState(true);
 
   const handleUseCurrentLocation = () => {

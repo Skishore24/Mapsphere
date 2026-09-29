@@ -17,25 +17,41 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   const [routeHistory, setRouteHistory] = useState<RouteHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = async () => {
+  const handleTabChange = (tab: 'search' | 'routes') => {
+    setActiveTab(tab);
     setIsLoading(true);
-    try {
-      if (activeTab === 'search') {
-        const data = await historyService.getSearchHistory();
-        setSearchHistory(data);
-      } else {
-        const data = await historyService.getRouteHistory();
-        setRouteHistory(data);
-      }
-    } catch (err) {
-      console.error('Failed to load history', err);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   useEffect(() => {
-    loadData();
+    let isCancelled = false;
+    const fetchHistory = async () => {
+      try {
+        if (activeTab === 'search') {
+          const data = await historyService.getSearchHistory();
+          if (!isCancelled) {
+            setSearchHistory(data);
+            setIsLoading(false);
+          }
+        } else {
+          const data = await historyService.getRouteHistory();
+          if (!isCancelled) {
+            setRouteHistory(data);
+            setIsLoading(false);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load history', err);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchHistory();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [activeTab]);
 
   const handleClear = async () => {
@@ -93,7 +109,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
         gap: '8px',
       }}>
         <button
-          onClick={() => setActiveTab('search')}
+          onClick={() => handleTabChange('search')}
           style={{
             flex: 1,
             padding: '8px',
@@ -109,7 +125,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
           Recent Searches
         </button>
         <button
-          onClick={() => setActiveTab('routes')}
+          onClick={() => handleTabChange('routes')}
           style={{
             flex: 1,
             padding: '8px',

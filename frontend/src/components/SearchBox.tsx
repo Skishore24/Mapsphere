@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { searchService } from '../services/searchService';
 import { SearchResult } from '../types';
-import { Search, MapPin, X, Loader2, Navigation } from 'lucide-react';
+import { Search, MapPin, X, Loader2 } from 'lucide-react';
 
 interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
@@ -20,10 +20,16 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!query || query.trim().length < 2) {
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    if (!val || val.trim().length < 2) {
       setResults([]);
       setIsOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!query || query.trim().length < 2) {
       return;
     }
 
@@ -81,7 +87,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
           type="text"
           placeholder="Search places, addresses, cafes..."
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={e => handleQueryChange(e.target.value)}
           onFocus={() => { if (results.length > 0) setIsOpen(true); }}
           style={{
             flex: 1,

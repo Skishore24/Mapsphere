@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { locationService } from '../services/locationService';
 import { ShareSession, Coordinates } from '../types';
 import { Radio, X, Copy, Check, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';

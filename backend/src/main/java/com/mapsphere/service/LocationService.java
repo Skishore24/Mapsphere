@@ -41,6 +41,7 @@ public class LocationService {
         );
     }
 
+    @Transactional(readOnly = true)
     public LocationShareSession getSession(String shareId) {
         LocationShareSession session = sessionRepository.findByShareIdAndActiveTrue(shareId)
                 .orElseThrow(() -> new ResourceNotFoundException("Live tracking session not found or expired"));

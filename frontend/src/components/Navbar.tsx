@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { 
   Compass, 
   Navigation, 
@@ -8,9 +8,7 @@ import {
   History, 
   ShieldAlert, 
   User as UserIcon, 
-  LogOut, 
-  Search,
-  Sparkles
+  LogOut 
 } from 'lucide-react';
 
 interface NavbarProps {

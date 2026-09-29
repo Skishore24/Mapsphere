@@ -17,20 +17,25 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadFavorites = async () => {
-    setIsLoading(true);
-    try {
-      const data = await favoriteService.getFavorites();
-      setFavorites(data);
-    } catch (err) {
-      console.error('Failed to load favorites', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadFavorites();
+    let isCancelled = false;
+    favoriteService.getFavorites()
+      .then(data => {
+        if (!isCancelled) {
+          setFavorites(data);
+          setIsLoading(false);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load favorites', err);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const handleRemove = async (placeId: number, e: React.MouseEvent) => {

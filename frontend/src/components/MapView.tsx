@@ -2,7 +2,22 @@ import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Place, RouteResponse, Coordinates, LocationMessage } from '../types';
-import { Locate, Navigation, Crosshair, Layers } from 'lucide-react';
+import { Locate } from 'lucide-react';
+
+function getCategorySymbol(cat: string): string {
+  switch (cat.toUpperCase()) {
+    case 'RESTAURANT': return '🍴';
+    case 'HOSPITAL': return '🏥';
+    case 'HOTEL': return '🏨';
+    case 'COLLEGE': case 'SCHOOL': return '🎓';
+    case 'PARK': return '🌳';
+    case 'PETROL_STATION': return '⛽';
+    case 'BANK': case 'ATM': return '🏦';
+    case 'PHARMACY': return '💊';
+    case 'SHOP': return '🛍️';
+    default: return '📍';
+  }
+}
 
 interface MapViewProps {
   places: Place[];
@@ -34,9 +49,16 @@ export const MapView: React.FC<MapViewProps> = ({
 
   const placesLayerRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
-  const accuracyCircleRef = useRef<L.Circle | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const liveTrackedMarkerRef = useRef<L.Marker | null>(null);
+
+  const onViewportChangeRef = useRef(onViewportChange);
+  const onMapClickRef = useRef(onMapClick);
+
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange;
+    onMapClickRef.current = onMapClick;
+  });
 
   // Initialize Map
   useEffect(() => {
@@ -67,7 +89,7 @@ export const MapView: React.FC<MapViewProps> = ({
     // Viewport change listener (Bounding Box)
     map.on('moveend', () => {
       const bounds = map.getBounds();
-      onViewportChange(
+      onViewportChangeRef.current(
         bounds.getSouth(),
         bounds.getWest(),
         bounds.getNorth(),
@@ -77,14 +99,14 @@ export const MapView: React.FC<MapViewProps> = ({
 
     // Map click
     map.on('click', (e: L.LeafletMouseEvent) => {
-      onMapClick({ latitude: e.latlng.lat, longitude: e.latlng.lng });
+      onMapClickRef.current({ latitude: e.latlng.lat, longitude: e.latlng.lng });
     });
 
     mapRef.current = map;
 
     // Initial bounding box load
     const b = map.getBounds();
-    onViewportChange(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+    onViewportChangeRef.current(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
 
     return () => {
       map.remove();
@@ -200,21 +222,6 @@ export const MapView: React.FC<MapViewProps> = ({
       mapRef.current.flyTo([selectedPlace.latitude, selectedPlace.longitude], 16, { duration: 1.2 });
     }
   }, [selectedPlace]);
-
-  const getCategorySymbol = (cat: string) => {
-    switch (cat.toUpperCase()) {
-      case 'RESTAURANT': return '🍴';
-      case 'HOSPITAL': return '🏥';
-      case 'HOTEL': return '🏨';
-      case 'COLLEGE': case 'SCHOOL': return '🎓';
-      case 'PARK': return '🌳';
-      case 'PETROL_STATION': return '⛽';
-      case 'BANK': case 'ATM': return '🏦';
-      case 'PHARMACY': return '💊';
-      case 'SHOP': return '🛍️';
-      default: return '📍';
-    }
-  };
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
