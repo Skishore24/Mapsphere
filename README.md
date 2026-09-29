@@ -34,32 +34,44 @@ MapSphere is a full-stack, enterprise-grade geospatial mapping and real-time nav
 ### 🗺️ Interactive Geospatial Mapping
 - **Interactive Leaflet Map**: Smooth zoom, panning, custom high-contrast SVG markers, and intuitive popups with place details.
 - **Dynamic Bounding-Box Loading**: Fetches places dynamically as the map viewport moves and zooms, preventing memory overload.
+- **Spatial Marker Clustering**: Grid-based clustering collapses dense clusters at low zoom levels (< 14) and reveals individual vector pins with bounds-zoom upon click.
+- **High-Performance Basemap Switcher**: Switch on-the-fly between **Esri Streets** (Akamai Edge CDN <60ms cached), **Esri Satellite**, **OpenStreetMap Standard**, and **World Topographic**.
 - **Category Filter Bar**: Filter points of interest instantly (Restaurants, Hotels, Hospitals, Colleges, Parks, Petrol Stations / EV Chargers, Banks, Pharmacies, Shops).
 - **Reverse Geocoding on Click**: Click anywhere on the map to retrieve human-readable address information and coordinates.
 
 ### 🔍 Search & Geocoding
 - **Smart Autocomplete**: Powered by OpenStreetMap Nominatim with debounced search suggestions.
 - **Categorized Results**: Rapidly discover nearby amenities with calculated distance from your location.
-- **Search History**: Automatically logs user queries for rapid recall.
+- **Search History Recall**: Automatically logs user queries for rapid recall; clicking past queries auto-fills and triggers instant search.
 
 ### 🛣️ Turn-by-Turn Routing & Directions
 - **Multi-Modal Routing**: Supports **Driving (Car)**, **Walking (Foot)**, and **Cycling (Bicycle)** modes using the OSRM routing engine.
 - **Interactive Waypoints**: Pick start and destination via search autocomplete, current GPS position, or map click.
 - **Detailed Navigation Panel**: Turn-by-turn guidance maneuvers, total distance (km), estimated travel time (min/hr), and route history tracking.
 
+### 🧭 Real-Time Turn-by-Turn Navigation HUD
+- **Head-Up Display (HUD)**: Fullscreen navigation overlay with prominent maneuver directions (left/right turns, roundabouts, U-turns, continue, arrive).
+- **Real-Time Step Progression**: Automatically advances to the next maneuver step as the user approaches within 20 meters.
+- **Automatic Off-Route Detection**: Continuously monitors GPS proximity to the route geometry. If distance exceeds 40m for 3 consecutive GPS fixes, the system automatically marks the trip as `OFF_ROUTE`.
+- **Dynamic Rerouting**: Automatically calculates a fresh optimal road route from current GPS coordinates to destination with a 10-second stabilization cooldown.
+- **Arrival Detection**: Notifies the user upon reaching within 25 meters of the destination.
+
 ### 📡 Real-Time Live Location Sharing
 - **Bi-Directional STOMP over WebSockets**: Stream GPS telemetry (`latitude`, `longitude`, `heading`, `speed`, `accuracy`) in real time.
-- **Sharable Tracking Link**: Generate unique tracking sessions (`/track?track=<shareId>`) allowing others to watch real-time movement live on the map.
+- **Sharable Tracking Link**: Generate unique tracking sessions (`/?track=<shareId>`) allowing others to watch real-time movement live on the map.
+- **Adaptive Throttling**: Intelligent GPS update frequency based on movement velocity and accuracy.
 - **Session Expiration & Revocation**: Instant termination or automatic time-based expiry of active sessions.
 
 ### 🔐 Authentication & Role-Based Authorization
 - **Spring Security + JWT**: Stateless token-based authentication with expiration (24h default).
 - **Dual Roles**: `ROLE_USER` (standard accounts) and `ROLE_ADMIN` (privileged portal).
 - **User Dashboard**: Manage saved favorite places with custom labels/notes, search history, and route history.
+- **Non-Blocking Toasts**: Clean animated notification system replacing intrusive browser alerts.
 
 ### 📊 Admin Management Portal
 - **System Metrics**: Real-time statistics on total registered users, spatial places, active live sharing sessions, and calculated routes.
 - **Place Administration**: Add new spatial locations, update metadata, or delete outdated points of interest.
+- **Telemetry & Health**: Live JVM memory status and system telemetry.
 
 ---
 
@@ -192,6 +204,50 @@ npm run dev
 - Vite will start the frontend development server at:  
   **👉 [http://localhost:5173](http://localhost:5173)**
 - Open this URL in your web browser (Chrome, Edge, Firefox, or Safari).
+
+---
+
+## 🐳 Docker Containerized Deployment
+
+You can spin up the entire production stack (PostgreSQL + PostGIS, Redis Cache, Spring Boot Backend, and Nginx React Frontend) in one command:
+
+```bash
+# 1. Build and start all 4 services in the background
+docker-compose up -d --build
+
+# 2. View container logs in real time
+docker-compose logs -f
+
+# 3. Stop containers and retain persistent database volume
+docker-compose down
+```
+
+| Service | Container Name | Port Mapping | Healthcheck |
+| :--- | :--- | :--- | :--- |
+| **PostgreSQL + PostGIS** | `mapsphere-postgres` | `5432:5432` | `pg_isready` |
+| **Redis** | `mapsphere-redis` | `6379:6379` | In-memory cache |
+| **Spring Boot API** | `mapsphere-backend` | `8081:8081` | `/api/health` |
+| **React + Nginx** | `mapsphere-frontend` | `80:80` | HTTP 200 |
+
+---
+
+## ☁️ Cloud Deployment (Render & Vercel)
+
+### Backend & PostGIS on Render:
+1. Fork or push this repository to GitHub.
+2. Go to **Render Dashboard** -> **Blueprints** -> **New Blueprint Instance**.
+3. Connect your repository. Render automatically reads [render.yaml](file:///c:/MyFiles/Project/Map/render.yaml) and provisions:
+   - A managed PostgreSQL instance with PostGIS (`mapsphere-db`).
+   - A Dockerized Spring Boot Web Service (`mapsphere-backend`) with memory limits (`-XX:MaxRAMPercentage=75.0`).
+4. Once deployed, note your Render backend URL: `https://mapsphere-backend.onrender.com`.
+
+### Frontend on Vercel:
+1. Go to **Vercel Dashboard** -> **Add New Project**.
+2. Select the `frontend` folder as the root directory.
+3. Configure the environment variables:
+   - `VITE_API_URL` = `https://mapsphere-backend.onrender.com`
+   - `VITE_WS_URL` = `https://mapsphere-backend.onrender.com`
+4. Deploy. Vercel automatically applies [vercel.json](file:///c:/MyFiles/Project/Map/frontend/vercel.json) to handle SPA routing rewrites.
 
 ---
 

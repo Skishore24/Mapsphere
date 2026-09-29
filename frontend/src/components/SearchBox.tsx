@@ -8,17 +8,25 @@ interface SearchBoxProps {
   onSetAsOrigin?: (result: SearchResult) => void;
   onSetAsDestination?: (result: SearchResult) => void;
   userCoords?: { latitude: number; longitude: number } | null;
+  externalQuery?: string;
 }
 
 export const SearchBox: React.FC<SearchBoxProps> = ({
   onSelectResult,
   userCoords,
+  externalQuery,
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (externalQuery && externalQuery !== query) {
+      setQuery(externalQuery);
+    }
+  }, [externalQuery, query]);
 
   const handleQueryChange = (val: string) => {
     setQuery(val);

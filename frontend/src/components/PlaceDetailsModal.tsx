@@ -48,17 +48,10 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
   };
 
   return (
-    <div className="glass-modal" style={{
-      position: 'absolute',
-      bottom: '24px',
-      left: '16px',
-      width: '380px',
-      maxWidth: 'calc(100vw - 32px)',
-      zIndex: 1000,
-      padding: '20px',
-      animation: 'fadeIn 0.2s ease-out',
-      boxShadow: 'var(--shadow-lg)',
-    }}>
+    <div className="glass-modal place-details-modal">
+      {/* Mobile bottom sheet drag handle */}
+      <div className="bottom-sheet-drag-handle" />
+
       {/* Top Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
         <div>
@@ -159,8 +152,8 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
 
         <button
           onClick={handleSave}
-          disabled={!isAuthenticated || isSaving || isSavedActive}
-          title={!isAuthenticated ? 'Sign in to save places' : ''}
+          disabled={!isAuthenticated || isSaving || isSavedActive || place.id <= 0}
+          title={!isAuthenticated ? 'Sign in to save places' : place.id <= 0 ? 'Custom search locations cannot be bookmarked' : ''}
           style={{
             display: 'flex',
             alignItems: 'center',

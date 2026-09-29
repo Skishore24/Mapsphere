@@ -7,4 +7,7 @@ export default defineConfig({
   define: {
     global: 'window',
   },
+  build: {
+    chunkSizeWarningLimit: 1200,
+  },
 })

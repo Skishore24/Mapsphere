@@ -3,7 +3,8 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { LocationMessage } from '../types';
 
-const WS_ENDPOINT = import.meta.env.VITE_WS_URL || 'http://localhost:8081/ws-mapsphere';
+const rawWs = import.meta.env.VITE_WS_URL || (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/ws-mapsphere` : 'http://localhost:8081/ws-mapsphere');
+const WS_ENDPOINT = rawWs.endsWith('/ws-mapsphere') ? rawWs : `${rawWs}/ws-mapsphere`;
 
 export function useWebSocket(shareId?: string | null, onLocationReceived?: (msg: LocationMessage) => void) {
   const [isConnected, setIsConnected] = useState(false);

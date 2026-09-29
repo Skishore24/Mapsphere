@@ -18,6 +18,7 @@ import {
 interface DirectionsPanelProps {
   onClose: () => void;
   onCalculateRoute: (origin: Coordinates, dest: Coordinates, mode: 'DRIVING' | 'WALKING' | 'CYCLING', originName?: string, destName?: string) => Promise<void>;
+  onStartNavigation?: (route: RouteResponse, dest: Coordinates, mode: 'DRIVING' | 'WALKING' | 'CYCLING') => void;
   route: RouteResponse | null;
   isLoading: boolean;
   userCoords?: Coordinates | null;
@@ -28,6 +29,7 @@ interface DirectionsPanelProps {
 export const DirectionsPanel: React.FC<DirectionsPanelProps> = ({
   onClose,
   onCalculateRoute,
+  onStartNavigation,
   route,
   isLoading,
   userCoords,
@@ -300,6 +302,33 @@ export const DirectionsPanel: React.FC<DirectionsPanelProps> = ({
                 Fastest route based on current conditions
               </div>
             </div>
+
+            {/* Start Live Turn-by-Turn Navigation */}
+            {onStartNavigation && destCoords && (
+              <button
+                type="button"
+                onClick={() => onStartNavigation(route, destCoords, mode)}
+                style={{
+                  padding: '13px 18px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#fff',
+                  border: 'none',
+                  fontWeight: 800,
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Navigation size={18} fill="#fff" />
+                <span>Start Live Navigation</span>
+              </button>
+            )}
 
             {/* Turn-by-Turn Steps Accordion */}
             {route.steps && route.steps.length > 0 && (

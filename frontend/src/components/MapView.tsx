@@ -3,21 +3,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Place, RouteResponse, Coordinates, LocationMessage } from '../types';
 import { Locate, Layers, Globe, Map as MapIcon, Mountain, Check } from 'lucide-react';
-
-function getCategorySymbol(cat: string): string {
-  switch (cat.toUpperCase()) {
-    case 'RESTAURANT': return '🍴';
-    case 'HOSPITAL': return '🏥';
-    case 'HOTEL': return '🏨';
-    case 'COLLEGE': case 'SCHOOL': return '🎓';
-    case 'PARK': return '🌳';
-    case 'PETROL_STATION': return '⛽';
-    case 'BANK': case 'ATM': return '🏦';
-    case 'PHARMACY': return '💊';
-    case 'SHOP': return '🛍️';
-    default: return '📍';
-  }
-}
+import { createCategoryIcon, createClusterIcon, createUserLocationIcon, createLiveTrackedIcon } from '../utils/markerIcons';
+import { clusterPlaces, ClusteredItem } from '../utils/clusterPlaces';
 
 export type BasemapStyle = 'streets' | 'osm' | 'satellite' | 'topo';
 
@@ -70,6 +57,8 @@ const BASEMAPS: BasemapOption[] = [
 interface MapViewProps {
   places: Place[];
   userCoords: Coordinates | null;
+  userHeading?: number | null;
+  userAccuracy?: number | null;
   selectedPlace: Place | null;
   onSelectPlace: (place: Place) => void;
   route: RouteResponse | null;
@@ -78,11 +67,14 @@ interface MapViewProps {
   onMapClick: (coords: Coordinates) => void;
   onLocateUser: () => void;
   activeCategory: string | null;
+  isNavigating?: boolean;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
   places,
   userCoords,
+  userHeading,
+  userAccuracy,
   selectedPlace,
   onSelectPlace,
   route,
@@ -91,6 +83,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onMapClick,
   onLocateUser,
   activeCategory,
+  isNavigating = false,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -98,7 +91,9 @@ export const MapView: React.FC<MapViewProps> = ({
 
   const placesLayerRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
+  const userAccuracyCircleRef = useRef<L.Circle | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
+  const altRoutePolylinesRef = useRef<L.Polyline[]>([]);
   const liveTrackedMarkerRef = useRef<L.Marker | null>(null);
 
   const [currentBasemap, setCurrentBasemap] = useState<BasemapStyle>('streets');
@@ -106,11 +101,13 @@ export const MapView: React.FC<MapViewProps> = ({
 
   const onViewportChangeRef = useRef(onViewportChange);
   const onMapClickRef = useRef(onMapClick);
+  const onSelectPlaceRef = useRef(onSelectPlace);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
     onMapClickRef.current = onMapClick;
+    onSelectPlaceRef.current = onSelectPlace;
   });
 
   // Switch basemap layer dynamically
@@ -145,14 +142,52 @@ export const MapView: React.FC<MapViewProps> = ({
       attribution,
       maxZoom: 19,
       subdomains: subdomains || 'abc',
-      keepBuffer: 8,              // Cache 8 extra tiles outside view for silky-smooth panning
-      updateWhenIdle: false,       // Load tiles continuously during drag
-      updateWhenZooming: false,    // Stretch current tiles while new zoom level loads (prevents grey flash)
+      keepBuffer: 8,
+      updateWhenIdle: false,
+      updateWhenZooming: false,
       updateInterval: 100,
     }).addTo(map);
 
     activeTileLayerRef.current = tileLayer;
   }, []);
+
+  // Update places & clusters when places, zoom, or category changes
+  const renderPlacesAndClusters = useCallback(() => {
+    if (!mapRef.current || !placesLayerRef.current) return;
+
+    placesLayerRef.current.clearLayers();
+
+    const filtered = activeCategory
+      ? places.filter(p => p.category.toUpperCase() === activeCategory.toUpperCase())
+      : places;
+
+    const zoom = mapRef.current.getZoom();
+    const items: ClusteredItem[] = clusterPlaces(filtered, zoom, mapRef.current);
+
+    items.forEach(item => {
+      if (item.isCluster) {
+        const clusterIcon = createClusterIcon(item.count);
+        const marker = L.marker([item.latitude, item.longitude], { icon: clusterIcon });
+        marker.on('click', () => {
+          if (mapRef.current) {
+            mapRef.current.fitBounds(item.bounds, { padding: [50, 50], maxZoom: 16 });
+          }
+        });
+        marker.addTo(placesLayerRef.current!);
+      } else {
+        const place = item.place;
+        const isSelected = selectedPlace?.id === place.id;
+        const icon = createCategoryIcon(place.category, isSelected);
+        const marker = L.marker([place.latitude, place.longitude], { icon });
+        marker.on('click', () => {
+          onSelectPlaceRef.current(place);
+        });
+        marker.addTo(placesLayerRef.current!);
+      }
+    });
+  }, [places, activeCategory, selectedPlace]);
+
+  const initialBasemapRef = useRef(currentBasemap);
 
   // Initialize Map
   useEffect(() => {
@@ -164,10 +199,10 @@ export const MapView: React.FC<MapViewProps> = ({
       center: initialCenter,
       zoom: 14,
       zoomControl: false,
-      preferCanvas: true, // Hardware accelerated canvas rendering for crisp 60fps performance
+      preferCanvas: true,
     });
 
-    applyTileLayer(currentBasemap, map);
+    applyTileLayer(initialBasemapRef.current, map);
 
     // Zoom Controls bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -190,6 +225,11 @@ export const MapView: React.FC<MapViewProps> = ({
           bounds.getEast()
         );
       }, 200);
+      renderPlacesAndClusters();
+    });
+
+    map.on('zoomend', () => {
+      renderPlacesAndClusters();
     });
 
     // Map click
@@ -208,7 +248,12 @@ export const MapView: React.FC<MapViewProps> = ({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [applyTileLayer, renderPlacesAndClusters]);
+
+  // Re-render markers when places, category, or selected place change
+  useEffect(() => {
+    renderPlacesAndClusters();
+  }, [renderPlacesAndClusters]);
 
   // Change basemap style
   const handleSelectBasemap = (style: BasemapStyle) => {
@@ -219,57 +264,45 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   };
 
-  // Update Places Markers
-  useEffect(() => {
-    if (!mapRef.current || !placesLayerRef.current) return;
-
-    placesLayerRef.current.clearLayers();
-
-    const filteredPlaces = activeCategory
-      ? places.filter(p => p.category.toUpperCase() === activeCategory.toUpperCase())
-      : places;
-
-    filteredPlaces.forEach(place => {
-      const catClass = `cat-${place.category.toLowerCase()}`;
-      const iconHtml = `<div class="category-pin ${catClass}">
-        <span style="font-size: 14px; font-weight: 800;">${getCategorySymbol(place.category)}</span>
-      </div>`;
-
-      const customIcon = L.divIcon({
-        html: iconHtml,
-        className: 'custom-leaflet-marker',
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-      });
-
-      const marker = L.marker([place.latitude, place.longitude], { icon: customIcon });
-
-      marker.on('click', () => {
-        onSelectPlace(place);
-      });
-
-      marker.addTo(placesLayerRef.current!);
-    });
-  }, [places, activeCategory, onSelectPlace]);
-
-  // Update User Location Marker
+  // Update User Location Marker & Accuracy Circle
   useEffect(() => {
     if (!mapRef.current || !userCoords) return;
 
     const latlng: [number, number] = [userCoords.latitude, userCoords.longitude];
+    const userIcon = createUserLocationIcon(userHeading ?? null);
 
     if (!userMarkerRef.current) {
-      const icon = L.divIcon({
-        html: '<div class="user-location-marker"></div>',
-        className: 'user-pin-wrapper',
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-      });
-      userMarkerRef.current = L.marker(latlng, { icon }).addTo(mapRef.current);
+      userMarkerRef.current = L.marker(latlng, { icon: userIcon, zIndexOffset: 1000 }).addTo(mapRef.current);
     } else {
       userMarkerRef.current.setLatLng(latlng);
+      userMarkerRef.current.setIcon(userIcon);
     }
-  }, [userCoords]);
+
+    // Accuracy Circle
+    if (userAccuracy && userAccuracy > 5 && userAccuracy < 1000) {
+      if (!userAccuracyCircleRef.current) {
+        userAccuracyCircleRef.current = L.circle(latlng, {
+          radius: userAccuracy,
+          color: '#3b82f6',
+          weight: 1.5,
+          opacity: 0.5,
+          fillColor: '#3b82f6',
+          fillOpacity: 0.08,
+        }).addTo(mapRef.current);
+      } else {
+        userAccuracyCircleRef.current.setLatLng(latlng);
+        userAccuracyCircleRef.current.setRadius(userAccuracy);
+      }
+    } else if (userAccuracyCircleRef.current) {
+      userAccuracyCircleRef.current.remove();
+      userAccuracyCircleRef.current = null;
+    }
+
+    // In Navigation Mode, follow the user smoothly
+    if (isNavigating) {
+      mapRef.current.panTo(latlng, { animate: true, duration: 0.8 });
+    }
+  }, [userCoords, userHeading, userAccuracy, isNavigating]);
 
   // Update Live Tracked Session Marker
   useEffect(() => {
@@ -277,15 +310,10 @@ export const MapView: React.FC<MapViewProps> = ({
 
     if (liveTrackedLocation) {
       const latlng: [number, number] = [liveTrackedLocation.latitude, liveTrackedLocation.longitude];
+      const liveIcon = createLiveTrackedIcon();
 
       if (!liveTrackedMarkerRef.current) {
-        const icon = L.divIcon({
-          html: '<div class="live-tracked-marker"></div>',
-          className: 'live-pin-wrapper',
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
-        });
-        liveTrackedMarkerRef.current = L.marker(latlng, { icon }).addTo(mapRef.current);
+        liveTrackedMarkerRef.current = L.marker(latlng, { icon: liveIcon, zIndexOffset: 990 }).addTo(mapRef.current);
         mapRef.current.panTo(latlng);
       } else {
         liveTrackedMarkerRef.current.setLatLng(latlng);
@@ -296,30 +324,50 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [liveTrackedLocation]);
 
-  // Update Routing Polyline
+  // Update Routing Polylines (Primary + Alternatives)
   useEffect(() => {
     if (!mapRef.current) return;
 
-    if (route && route.geometry && route.geometry.length > 0) {
-      if (routePolylineRef.current) {
-        routePolylineRef.current.remove();
-      }
-
-      // Draw high-visibility modern gradient-style route
-      const polyline = L.polyline(route.geometry as [number, number][], {
-        color: '#6366f1',
-        weight: 6,
-        opacity: 0.9,
-        lineJoin: 'round',
-      }).addTo(mapRef.current);
-
-      routePolylineRef.current = polyline;
-      mapRef.current.fitBounds(polyline.getBounds(), { padding: [60, 60] });
-    } else if (routePolylineRef.current) {
+    // Clean up existing route lines
+    if (routePolylineRef.current) {
       routePolylineRef.current.remove();
       routePolylineRef.current = null;
     }
-  }, [route]);
+    altRoutePolylinesRef.current.forEach(p => p.remove());
+    altRoutePolylinesRef.current = [];
+
+    if (route && route.geometry && route.geometry.length > 0) {
+      // 1. Draw alternative routes (grey/semi-transparent)
+      if (route.alternatives && route.alternatives.length > 0) {
+        route.alternatives.forEach(alt => {
+          if (alt.geometry && alt.geometry.length > 0) {
+            const altLine = L.polyline(alt.geometry as [number, number][], {
+              color: '#94a3b8',
+              weight: 5,
+              opacity: 0.6,
+              dashArray: '6, 8',
+              lineJoin: 'round',
+            }).addTo(mapRef.current!);
+            altRoutePolylinesRef.current.push(altLine);
+          }
+        });
+      }
+
+      // 2. Draw high-visibility primary route with glowing outline
+      const primaryPolyline = L.polyline(route.geometry as [number, number][], {
+        color: '#4f46e5',
+        weight: 6,
+        opacity: 0.95,
+        lineJoin: 'round',
+      }).addTo(mapRef.current);
+
+      routePolylineRef.current = primaryPolyline;
+
+      if (!isNavigating) {
+        mapRef.current.fitBounds(primaryPolyline.getBounds(), { padding: [60, 60] });
+      }
+    }
+  }, [route, isNavigating]);
 
   // Focus Selected Place
   useEffect(() => {
@@ -332,136 +380,138 @@ export const MapView: React.FC<MapViewProps> = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Floating Map Action Controls */}
-      <div style={{
-        position: 'absolute',
-        bottom: '24px',
-        right: '16px',
-        zIndex: 990,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-      }}>
-        {/* Basemap Switcher Menu Popover */}
-        {isLayerMenuOpen && (
-          <div style={{
-            position: 'absolute',
-            bottom: '105px',
-            right: '0',
-            background: 'rgba(15, 23, 42, 0.94)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-            width: '210px',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
-            animation: 'fadeIn 0.15s ease-out',
-          }}>
+      {/* Floating Map Action Controls (hidden in active navigation mode for maximum readability) */}
+      {!isNavigating && (
+        <div style={{
+          position: 'absolute',
+          bottom: '24px',
+          right: '16px',
+          zIndex: 990,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+        }}>
+          {/* Basemap Switcher Menu Popover */}
+          {isLayerMenuOpen && (
             <div style={{
-              fontSize: '11px',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.6px',
-              color: 'var(--text-muted)',
-              padding: '4px 8px',
+              position: 'absolute',
+              bottom: '105px',
+              right: '0',
+              background: 'rgba(15, 23, 42, 0.94)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              width: '210px',
+              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+              animation: 'fadeIn 0.15s ease-out',
             }}>
-              Basemap Layer
+              <div style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.6px',
+                color: 'var(--text-muted)',
+                padding: '4px 8px',
+              }}>
+                Basemap Layer
+              </div>
+
+              {BASEMAPS.map(base => {
+                const isSelected = currentBasemap === base.id;
+                return (
+                  <button
+                    key={base.id}
+                    onClick={() => handleSelectBasemap(base.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 10px',
+                      borderRadius: 'var(--radius-md)',
+                      background: isSelected ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                      border: isSelected ? '1px solid var(--accent-primary)' : '1px solid transparent',
+                      color: isSelected ? '#fff' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: isSelected ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
+                        {base.icon}
+                      </span>
+                      <span>{base.name}</span>
+                    </div>
+                    {isSelected && <Check size={14} color="var(--accent-primary)" />}
+                  </button>
+                );
+              })}
             </div>
+          )}
 
-            {BASEMAPS.map(base => {
-              const isSelected = currentBasemap === base.id;
-              return (
-                <button
-                  key={base.id}
-                  onClick={() => handleSelectBasemap(base.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-md)',
-                    background: isSelected ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                    border: isSelected ? '1px solid var(--accent-primary)' : '1px solid transparent',
-                    color: isSelected ? '#fff' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    textAlign: 'left',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={e => {
-                    if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                  }}
-                  onMouseLeave={e => {
-                    if (!isSelected) e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: isSelected ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
-                      {base.icon}
-                    </span>
-                    <span>{base.name}</span>
-                  </div>
-                  {isSelected && <Check size={14} color="var(--accent-primary)" />}
-                </button>
-              );
-            })}
-          </div>
-        )}
+          {/* Layer Switcher Trigger Button */}
+          <button
+            onClick={() => setIsLayerMenuOpen(prev => !prev)}
+            title="Change Map Style"
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: 'var(--radius-md)',
+              background: isLayerMenuOpen ? 'var(--accent-primary)' : 'var(--bg-surface-elevated)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid ' + (isLayerMenuOpen ? 'var(--accent-primary)' : 'var(--border-subtle)'),
+              color: isLayerMenuOpen ? '#fff' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-md)',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <Layers size={20} />
+          </button>
 
-        {/* Layer Switcher Trigger Button */}
-        <button
-          onClick={() => setIsLayerMenuOpen(prev => !prev)}
-          title="Change Map Style"
-          style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: 'var(--radius-md)',
-            background: isLayerMenuOpen ? 'var(--accent-primary)' : 'var(--bg-surface-elevated)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid ' + (isLayerMenuOpen ? 'var(--accent-primary)' : 'var(--border-subtle)'),
-            color: isLayerMenuOpen ? '#fff' : 'var(--text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-md)',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-        >
-          <Layers size={20} />
-        </button>
-
-        {/* Locate User Button */}
-        <button
-          onClick={onLocateUser}
-          title="Find My Location"
-          style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--bg-surface-elevated)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid var(--border-subtle)',
-            color: userCoords ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-md)',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-        >
-          <Locate size={20} />
-        </button>
-      </div>
+          {/* Locate User Button */}
+          <button
+            onClick={onLocateUser}
+            title="Find My Location"
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-surface-elevated)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid var(--border-subtle)',
+              color: userCoords ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-md)',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <Locate size={20} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

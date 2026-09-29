@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
+import { useToast } from './context/useToast';
 import { Navbar } from './components/Navbar';
 import { MapView } from './components/MapView';
 import { SearchBox } from './components/SearchBox';
 import { DirectionsPanel } from './components/DirectionsPanel';
+import { NavigationHUD } from './components/NavigationHUD';
 import { PlaceDetailsModal } from './components/PlaceDetailsModal';
 import { FavoritesDrawer } from './components/FavoritesDrawer';
 import { HistoryDrawer } from './components/HistoryDrawer';
@@ -11,6 +14,7 @@ import { LiveShareModal } from './components/LiveShareModal';
 import { AuthModal } from './components/AuthModal';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { useLocation } from './hooks/useLocation';
+import { useNavigation } from './hooks/useNavigation';
 import { useWebSocket } from './hooks/useWebSocket';
 import { mapService } from './services/mapService';
 import { routeService } from './services/routeService';
@@ -19,12 +23,17 @@ import { locationService } from './services/locationService';
 import { Place, SearchResult, RouteResponse, Coordinates, LocationMessage } from './types';
 
 function MapSphereApp() {
+  const toast = useToast();
   const { coords: userCoords, getCurrentLocation, startWatching, stopWatching } = useLocation();
+  const { navState, activeRoute, startNavigation, stopNavigation, updateNavProgress } = useNavigation();
 
   // Panels & Modals State
   const [activePanel, setActivePanel] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Map Data State
   const [places, setPlaces] = useState<Place[]>([]);
@@ -59,10 +68,14 @@ function MapSphereApp() {
             speed: session.speed,
             timestamp: session.lastUpdate || new Date().toISOString(),
           });
+          toast.info(`Connecting to live tracking session...`);
         }
-      }).catch(err => console.warn('Could not load tracking link', err));
+      }).catch(err => {
+        console.warn('Could not load tracking link', err);
+        toast.error('Unable to join live tracking session');
+      });
     }
-  }, [trackingShareId]);
+  }, [trackingShareId, toast]);
 
   // WebSocket for Live Tracking & Broadcasting
   const handleLocationReceived = useCallback((msg: LocationMessage) => {
@@ -82,6 +95,13 @@ function MapSphereApp() {
       });
     }
   }, [isBroadcasting, activeShareId, userCoords, sendLocationUpdate]);
+
+  // Continuously update turn-by-turn navigation progress during active trips
+  useEffect(() => {
+    if (userCoords && (navState.status === 'NAVIGATING' || navState.status === 'OFF_ROUTE')) {
+      updateNavProgress(userCoords);
+    }
+  }, [userCoords, navState.status, updateNavProgress]);
 
   // Viewport Bounding Box places loading
   const handleViewportChange = useCallback(async (minLat: number, minLng: number, maxLat: number, maxLng: number) => {
@@ -105,8 +125,10 @@ function MapSphereApp() {
     try {
       const res = await routeService.calculateRoute(origin, dest, mode, originName, destName);
       setRoute(res);
-    } catch (err) {
+      toast.success(`Optimal route calculated (${(res.distanceMeters / 1000).toFixed(1)} km, ${Math.round(res.durationSeconds / 60)} min)`);
+    } catch (err: any) {
       console.error('Failed to calculate route', err);
+      toast.error('Routing service unavailable. Please check endpoints.');
     } finally {
       setIsRoutingLoading(false);
     }
@@ -114,15 +136,20 @@ function MapSphereApp() {
 
   // User click on Search Result
   const handleSelectSearchResult = (result: SearchResult) => {
+    const isDbPlace = typeof result.placeId === 'number' && result.placeId > 0;
+    const computedId = isDbPlace 
+      ? result.placeId! 
+      : -1 * Math.abs(Math.floor(result.latitude * 10000 + result.longitude * 10000)) || -1;
+
     const p: Place = {
-      id: result.placeId || Date.now(),
+      id: computedId,
       name: result.name,
       description: result.displayName,
       category: result.category || 'LOCATION',
       address: result.displayName,
       latitude: result.latitude,
       longitude: result.longitude,
-      rating: 4.5,
+      rating: isDbPlace ? 4.5 : undefined,
     };
     setSelectedPlace(p);
   };
@@ -144,9 +171,22 @@ function MapSphereApp() {
     setSelectedPlace(null);
   };
 
+  // Start Turn-by-Turn Navigation HUD
+  const handleStartNavigation = (r: RouteResponse, dest: Coordinates, mode: 'DRIVING' | 'WALKING' | 'CYCLING') => {
+    startNavigation(r, dest, mode);
+    setActivePanel(null);
+    setSelectedPlace(null);
+    toast.info(`Navigation started (${r.steps?.length || 0} maneuvers)`);
+  };
+
   // Save Favorite
   const handleSaveFavorite = async (placeId: number, customName?: string, tag?: string) => {
-    await favoriteService.addFavorite(placeId, customName, tag);
+    try {
+      await favoriteService.addFavorite(placeId, customName, tag);
+      toast.success('Place saved to your favorites');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save favorite place');
+    }
   };
 
   // Map Click
@@ -162,8 +202,16 @@ function MapSphereApp() {
 
   // Locate User Button
   const handleLocateUser = () => {
-    getCurrentLocation().catch(err => alert(err.message));
+    getCurrentLocation()
+      .then(pos => {
+        toast.info(`GPS location acquired (accuracy: ±${Math.round(pos.accuracy || 10)}m)`);
+      })
+      .catch(err => {
+        toast.error(err.message || 'Location access is disabled. Please enable device permissions.');
+      });
   };
+
+  const isNavigating = navState.status !== 'IDLE';
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
@@ -180,11 +228,23 @@ function MapSphereApp() {
         activePanel={activePanel}
       />
 
-      {/* Floating Search Box */}
-      <SearchBox
-        onSelectResult={handleSelectSearchResult}
-        userCoords={userCoords}
-      />
+      {/* Floating Search Box (hidden during active turn-by-turn HUD to keep map clear) */}
+      {!isNavigating && (
+        <SearchBox
+          onSelectResult={handleSelectSearchResult}
+          userCoords={userCoords}
+          externalQuery={searchQuery}
+        />
+      )}
+
+      {/* Turn-by-Turn Navigation HUD Overlay */}
+      {isNavigating && (
+        <NavigationHUD
+          navState={navState}
+          onStopNavigation={stopNavigation}
+          onRecenter={handleLocateUser}
+        />
+      )}
 
       {/* Interactive Map */}
       <MapView
@@ -192,7 +252,7 @@ function MapSphereApp() {
         userCoords={userCoords}
         selectedPlace={selectedPlace}
         onSelectPlace={p => setSelectedPlace(p)}
-        route={route}
+        route={activeRoute || route}
         liveTrackedLocation={liveTrackedLocation}
         onViewportChange={handleViewportChange}
         onMapClick={handleMapClick}
@@ -201,10 +261,11 @@ function MapSphereApp() {
       />
 
       {/* Directions Panel */}
-      {activePanel === 'directions' && (
+      {activePanel === 'directions' && !isNavigating && (
         <DirectionsPanel
           onClose={() => { setActivePanel(null); setRoute(null); }}
           onCalculateRoute={handleCalculateRoute}
+          onStartNavigation={handleStartNavigation}
           route={route}
           isLoading={isRoutingLoading}
           userCoords={userCoords}
@@ -214,7 +275,7 @@ function MapSphereApp() {
       )}
 
       {/* Place Details Modal / Card */}
-      {selectedPlace && (
+      {selectedPlace && !isNavigating && (
         <PlaceDetailsModal
           key={selectedPlace.id}
           place={selectedPlace}
@@ -237,8 +298,9 @@ function MapSphereApp() {
       {activePanel === 'history' && (
         <HistoryDrawer
           onClose={() => setActivePanel(null)}
-          onSelectSearch={_q => {
-            // Trigger search with query
+          onSelectSearch={q => {
+            setSearchQuery(q);
+            setActivePanel(null);
           }}
         />
       )}
@@ -252,11 +314,13 @@ function MapSphereApp() {
             setActiveShareId(shareId);
             setIsBroadcasting(true);
             startWatching();
+            toast.success('Live location broadcasting started');
           }}
           onStopBroadcasting={() => {
             setIsBroadcasting(false);
             setActiveShareId(null);
             stopWatching();
+            toast.info('Live location sharing ended');
           }}
           isBroadcasting={isBroadcasting}
           currentShareId={activeShareId}
@@ -281,8 +345,10 @@ function MapSphereApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MapSphereApp />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <MapSphereApp />
+      </AuthProvider>
+    </ToastProvider>
   );
 }

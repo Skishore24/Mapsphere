@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Coordinates, RouteResponse, RouteStep, NavigationStatus, NavigationState } from '../types';
+import { Coordinates, RouteResponse, NavigationState } from '../types';
 import { routeService } from '../services/routeService';
 
 export function useNavigation() {

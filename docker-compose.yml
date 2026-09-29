@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL with PostGIS Spatial Extension
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: mapsphere-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mapsphere}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - mapsphere-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mapsphere}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mapsphere-net
+
+  # 2. Redis In-Memory Cache
+  redis:
+    image: redis:7-alpine
+    container_name: mapsphere-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - mapsphere-redisdata:/data
+    networks:
+      - mapsphere-net
+
+  # 3. Spring Boot Backend Web Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mapsphere-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-mapsphere}
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      JWT_SECRET: ${JWT_SECRET:-9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
+      JWT_EXPIRATION_MS: 86400000
+      PORT: 8081
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      SEED_ENABLED: ${SEED_ENABLED:-true}
+    ports:
+      - "8081:8081"
+    networks:
+      - mapsphere-net
+
+  # 4. React Frontend (Nginx SPA)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mapsphere-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
+      VITE_WS_URL: ${VITE_WS_URL:-http://localhost:8081}
+    ports:
+      - "80:80"
+    networks:
+      - mapsphere-net
+
+volumes:
+  mapsphere-pgdata:
+    driver: local
+  mapsphere-redisdata:
+    driver: local
+
+networks:
+  mapsphere-net:
+    driver: bridge

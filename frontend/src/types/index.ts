@@ -68,6 +68,9 @@ export interface RouteResponse {
 export interface Coordinates {
   latitude: number;
   longitude: number;
+  accuracy?: number;
+  heading?: number;
+  speed?: number;
 }
 
 export interface FavoriteItem {

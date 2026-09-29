@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../services/api';
 import { useAuth } from '../context/useAuth';
-import { ShieldAlert, X, Users, MapPin, Navigation, Radio, Activity, Loader2, KeyRound, Cpu, HardDrive } from 'lucide-react';
+import { ShieldAlert, X, Users, MapPin, Navigation, Radio, Activity, Loader2, KeyRound, HardDrive } from 'lucide-react';
 
 interface AdminDashboardModalProps {
   onClose: () => void;

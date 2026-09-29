@@ -12,7 +12,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class PoiIngestionService {
@@ -36,28 +39,32 @@ public class PoiIngestionService {
 
         for (PlaceDto dto : placesToIngest) {
             // 1. Validate coordinates
-            if (dto.getLatitude() == null || dto.getLongitude() == null ||
-                dto.getLatitude() < -90 || dto.getLatitude() > 90 ||
-                dto.getLongitude() < -180 || dto.getLongitude() > 180) {
+            Double latVal = dto.getLatitude();
+            Double lngVal = dto.getLongitude();
+            if (latVal == null || lngVal == null ||
+                latVal < -90.0 || latVal > 90.0 ||
+                lngVal < -180.0 || lngVal > 180.0) {
                 invalid++;
-                errors.add("Invalid coordinates for place: " + dto.getName());
+                errors.add("Invalid coordinates for place: " + (dto.getName() != null ? dto.getName() : "Unknown"));
                 continue;
             }
 
-            if (dto.getName() == null || dto.getName().isBlank()) {
+            String name = dto.getName();
+            if (name == null || name.isBlank()) {
                 invalid++;
                 errors.add("Missing name for POI entry");
                 continue;
             }
 
             String normalizedCat = normalizeCategory(dto.getCategory());
-            double lat = dto.getLatitude();
-            double lng = dto.getLongitude();
+            double lat = latVal;
+            double lng = lngVal;
 
             // 2. Proximity deduplication check (within 35 meters)
             List<Place> nearby = placeRepository.findNearbyPlaces(lat, lng, 35.0);
+            String trimmedName = name.trim();
             Optional<Place> match = nearby.stream()
-                    .filter(p -> p.getName().trim().equalsIgnoreCase(dto.getName().trim()))
+                    .filter(p -> p.getName() != null && p.getName().trim().equalsIgnoreCase(trimmedName))
                     .findFirst();
 
             if (match.isPresent()) {
